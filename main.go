@@ -2,6 +2,7 @@ package main
 
 import (
 	"errors"
+	"flag"
 	"fmt"
 	"go/build"
 	"log"
@@ -14,21 +15,34 @@ import (
 )
 
 func main() {
-	importer, err := NewImporter()
+	rw := flag.Bool("rewrite", false, "rewrite import paths to use vendored packages")
+	flag.Parse()
+
+	importer, err := NewImporter(*rw)
 	if err != nil {
 		fmt.Println(err)
 		return
 	}
-	hash, err := importer.GxPublishGoPackage(os.Args[1])
+
+	if len(flag.Args()) == 0 {
+		fmt.Println("must specify a package name")
+		return
+	}
+
+	pkg := flag.Args()[0]
+	fmt.Printf("vendoring package %s\n", pkg)
+
+	_, err = importer.GxPublishGoPackage(pkg)
 	if err != nil {
 		log.Println(err)
 		return
 	}
-	fmt.Println("SUCCESS: ", hash)
 }
 
 func pathIsNotStdlib(path string) bool {
-	if strings.HasPrefix(path, "github.com") {
+	first := strings.Split(path, "/")[0]
+
+	if len(strings.Split(first, ".")) > 1 {
 		return true
 	}
 	return false
@@ -40,7 +54,7 @@ type Importer struct {
 	pm     *gx.PM
 }
 
-func NewImporter() (*Importer, error) {
+func NewImporter(rw bool) (*Importer, error) {
 	gp, err := getGoPath()
 	if err != nil {
 		return nil, err
@@ -97,25 +111,30 @@ func (i *Importer) GxPublishGoPackage(imppath string) (hash string, err error) {
 	// recurse!
 	gopkg, err := build.Import(imppath, "", 0)
 	if err != nil {
-		log.Println("IMPoRT ERROR: ", err)
 		return "", err
 	}
 
+	var depsToVendor []string
+
 	for _, child := range gopkg.Imports {
 		if pathIsNotStdlib(child) {
-			childhash, err := i.GxPublishGoPackage(child)
-			if err != nil {
-				log.Printf("[%s] recurse package error: ", child, err)
-				return "", err
-			}
-
-			chnameParts := strings.Split(child, "/")
-
-			pkg.Dependencies = append(pkg.Dependencies, &gx.Dependency{
-				Hash: childhash,
-				Name: chnameParts[len(chnameParts)-1],
-			})
+			depsToVendor = append(depsToVendor, child)
 		}
+	}
+
+	for n, child := range depsToVendor {
+		fmt.Printf("- processing dep %s for %s [%d / %d]\n", child, imppath, n+1, len(depsToVendor))
+		childhash, err := i.GxPublishGoPackage(child)
+		if err != nil {
+			return "", err
+		}
+
+		chnameParts := strings.Split(child, "/")
+
+		pkg.Dependencies = append(pkg.Dependencies, &gx.Dependency{
+			Hash: childhash,
+			Name: chnameParts[len(chnameParts)-1],
+		})
 	}
 
 	err = gx.SavePackageFile(pkg, pkgFilePath)
@@ -125,14 +144,16 @@ func (i *Importer) GxPublishGoPackage(imppath string) (hash string, err error) {
 
 	hash, err = i.pm.PublishPackage(pkgpath, pkg)
 	if err != nil {
-		log.Println("publish error: ", err)
 		return "", err
 	}
+
+	fmt.Printf("published %s as %s\n", imppath, hash)
 
 	i.pkgs[imppath] = hash
 	return hash, nil
 }
 
+// TODO: take an option to grab packages from local GOPATH
 func GoGet(path string) error {
 	return exec.Command("go", "get", path).Run()
 }
