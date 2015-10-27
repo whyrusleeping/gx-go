@@ -3,7 +3,6 @@ package main
 import (
 	"bytes"
 	"errors"
-	"flag"
 	"fmt"
 	"go/ast"
 	"go/build"
@@ -18,32 +17,92 @@ import (
 	"strconv"
 	"strings"
 
+	cli "github.com/codegangsta/cli"
+	fs "github.com/kr/fs"
 	gx "github.com/whyrusleeping/gx/gxutil"
 )
 
 func main() {
-	rw := flag.Bool("rewrite", false, "rewrite import paths to use vendored packages")
-	flag.Parse()
+	app := cli.NewApp()
+	app.Name = "gx-go-tool"
+	app.Author = "whyrusleeping"
+	app.Version = "0.2.0"
 
-	importer, err := NewImporter(*rw)
-	if err != nil {
-		fmt.Println(err)
-		return
+	var UpdateCommand = cli.Command{
+		Name:      "update",
+		Usage:     "update a packages imports to a new path",
+		ArgsUsage: "[old import] [new import]",
+		Action: func(c *cli.Context) {
+			if len(c.Args()) < 2 {
+				fmt.Println("must specify current and new import names")
+				return
+			}
+
+			oldimp := c.Args()[0]
+			newimp := c.Args()[1]
+
+			curpath, err := os.Getwd()
+			if err != nil {
+				fmt.Println("error getting working dir: ", err)
+				return
+			}
+
+			rw := func(in string) string {
+				if in == oldimp {
+					return newimp
+				}
+				return in
+			}
+
+			filter := func(in string) bool {
+				return !strings.HasSuffix(in, ".go")
+			}
+
+			err = updateImports(curpath, rw, filter)
+			if err != nil {
+				fmt.Println(err)
+				return
+			}
+		},
 	}
 
-	if len(flag.Args()) == 0 {
-		fmt.Println("must specify a package name")
-		return
+	var ImportCommand = cli.Command{
+		Name: "import",
+		Flags: []cli.Flag{
+			cli.BoolFlag{
+				Name:  "rewrite",
+				Usage: "rewrite import paths to use vendored packages",
+			},
+		},
+		Action: func(c *cli.Context) {
+			importer, err := NewImporter(c.Bool("rewrite"))
+			if err != nil {
+				fmt.Println(err)
+				return
+			}
+
+			if !c.Args().Present() {
+				fmt.Println("must specify a package name")
+				return
+			}
+
+			pkg := c.Args().First()
+			fmt.Printf("vendoring package %s\n", pkg)
+
+			_, err = importer.GxPublishGoPackage(pkg)
+			if err != nil {
+				log.Println(err)
+				return
+			}
+		},
 	}
 
-	pkg := flag.Args()[0]
-	fmt.Printf("vendoring package %s\n", pkg)
-
-	_, err = importer.GxPublishGoPackage(pkg)
-	if err != nil {
-		log.Println(err)
-		return
+	app.Commands = []cli.Command{
+		UpdateCommand,
+		ImportCommand,
 	}
+
+	app.Run(os.Args)
 }
 
 func pathIsNotStdlib(path string) bool {
@@ -147,7 +206,12 @@ func (i *Importer) GxPublishGoPackage(imppath string) (*gx.Dependency, error) {
 	}
 
 	if i.rewrite {
-		err = i.rewriteImports(pkgpath)
+		fullpkgpath, err := filepath.Abs(pkgpath)
+		if err != nil {
+			return nil, err
+		}
+
+		err = i.rewriteImports(fullpkgpath)
 		if err != nil {
 			return nil, err
 		}
@@ -169,50 +233,51 @@ func (i *Importer) GxPublishGoPackage(imppath string) (*gx.Dependency, error) {
 }
 
 func (i *Importer) rewriteImports(pkgpath string) error {
-	fullpkgpath, err := filepath.Abs(pkgpath)
-	if err != nil {
-		return err
+
+	filter := func(p string) bool {
+		return strings.HasPrefix(p, "vendor") ||
+			strings.HasPrefix(p, ".git") ||
+			!strings.HasSuffix(p, ".go")
 	}
-	return filepath.Walk(pkgpath, func(path string, info os.FileInfo, err error) error {
+
+	rw := func(in string) string {
+		dep, ok := i.pkgs[in]
+		if !ok {
+			return in
+		}
+
+		return dep.Hash + "/" + dep.Name
+	}
+
+	return updateImports(pkgpath, rw, filter)
+}
+
+func updateImports(path string, rw func(string) string, filter func(string) bool) error {
+	w := fs.Walk(path)
+	for w.Step() {
+		rel := w.Path()[len(path):]
+		if len(rel) == 0 {
+			continue
+		}
+		rel = rel[1:]
+
+		if filter(rel) {
+			w.SkipDir()
+			continue
+		}
+
+		err := rewriteImportsInFile(w.Path(), rw)
 		if err != nil {
+			fmt.Println("rewrite error: ", err)
 			return err
 		}
-
-		if info.IsDir() {
-			return nil
-		}
-
-		rel := path[len(fullpkgpath)+1:]
-
-		if strings.HasPrefix(rel, "vendor") {
-			return nil
-		}
-
-		if strings.HasPrefix(rel, ".git") {
-			return nil
-		}
-
-		if strings.HasSuffix(path, ".go") {
-			err := i.rewriteImportsInFile(path, func(in string) string {
-				dep, ok := i.pkgs[in]
-				if !ok {
-					return in
-				}
-
-				return dep.Hash + "/" + dep.Name
-			})
-			if err != nil {
-				fmt.Println("ERROR: ", err)
-				return err
-			}
-		}
-
-		return nil
-	})
+	}
+	return nil
 }
 
 // inspired by godeps rewrite, rewrites import paths with gx vendored names
-func (i *Importer) rewriteImportsInFile(fi string, rw func(string) string) error {
+func rewriteImportsInFile(fi string, rw func(string) string) error {
+	fmt.Println("REWRITE FI: ", fi)
 	cfg := &printer.Config{Mode: printer.UseSpaces | printer.TabIndent, Tabwidth: 8}
 	fset := token.NewFileSet()
 	file, err := parser.ParseFile(fset, fi, nil, parser.ParseComments)
