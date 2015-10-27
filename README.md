@@ -1,6 +1,6 @@
 # gx-go-tool
 
-A tool to use with the gx package manager for go language packages.
+A tool to use with the gx package manager for packages written in go.
 
 ## Usage:
 ```
@@ -8,7 +8,7 @@ NAME:
    gx-go-tool - A new cli application
 
 USAGE:
-   gx-go-import [global options] command [command options] [arguments...]
+   gx-go-tool [global options] command [command options] [arguments...]
    
 VERSION:
    0.2.0
@@ -18,7 +18,7 @@ AUTHOR(S):
    
 COMMANDS:
    update	update a packages imports to a new path
-   import	
+   import	import a go package and all its depencies into gx
    help, h	Shows a list of commands or help for one command
    
 GLOBAL OPTIONS:
