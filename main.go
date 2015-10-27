@@ -193,7 +193,14 @@ func (i *Importer) rewriteImports(pkgpath string) error {
 		}
 
 		if strings.HasSuffix(path, ".go") {
-			err := i.rewriteImportsInFile(path)
+			err := i.rewriteImportsInFile(path, func(in string) string {
+				dep, ok := i.pkgs[in]
+				if !ok {
+					return in
+				}
+
+				return dep.Hash + "/" + dep.Name
+			})
 			if err != nil {
 				fmt.Println("ERROR: ", err)
 				return err
@@ -205,7 +212,7 @@ func (i *Importer) rewriteImports(pkgpath string) error {
 }
 
 // inspired by godeps rewrite, rewrites import paths with gx vendored names
-func (i *Importer) rewriteImportsInFile(fi string) error {
+func (i *Importer) rewriteImportsInFile(fi string, rw func(string) string) error {
 	cfg := &printer.Config{Mode: printer.UseSpaces | printer.TabIndent, Tabwidth: 8}
 	fset := token.NewFileSet()
 	file, err := parser.ParseFile(fset, fi, nil, parser.ParseComments)
@@ -220,13 +227,12 @@ func (i *Importer) rewriteImportsInFile(fi string) error {
 			return err
 		}
 
-		dep, ok := i.pkgs[p]
-		if !ok {
-			continue
-		}
+		np := rw(p)
 
-		changed = true
-		imp.Path.Value = strconv.Quote(dep.Hash + "/" + dep.Name)
+		if np != p {
+			changed = true
+			imp.Path.Value = strconv.Quote(np)
+		}
 	}
 
 	if !changed {
