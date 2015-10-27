@@ -98,9 +98,39 @@ func main() {
 		},
 	}
 
+	var PathCommand = cli.Command{
+		Name:  "path",
+		Usage: "prints the import path of the current package within GOPATH",
+		Action: func(c *cli.Context) {
+			gopath := os.Getenv("GOPATH")
+			if gopath == "" {
+				fmt.Println("GOPATH not set, cannot derive import path")
+				return
+			}
+
+			cwd, err := os.Getwd()
+			if err != nil {
+				fmt.Println(err)
+				os.Exit(1)
+			}
+
+			srcdir := path.Join(gopath, "src")
+			srcdir += "/"
+
+			if !strings.HasPrefix(cwd, srcdir) {
+				fmt.Println("package not within GOPATH/src")
+				os.Exit(1)
+			}
+
+			rel := cwd[len(srcdir):]
+			fmt.Println(rel)
+		},
+	}
+
 	app.Commands = []cli.Command{
 		UpdateCommand,
 		ImportCommand,
+		PathCommand,
 	}
 
 	app.Run(os.Args)
