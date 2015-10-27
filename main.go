@@ -67,7 +67,8 @@ func main() {
 	}
 
 	var ImportCommand = cli.Command{
-		Name: "import",
+		Name:  "import",
+		Usage: "import a go package and all its depencies into gx",
 		Flags: []cli.Flag{
 			cli.BoolFlag{
 				Name:  "rewrite",
