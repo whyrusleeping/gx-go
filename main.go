@@ -329,5 +329,9 @@ func rewriteImportsInFile(fi string, rw func(string) string) error {
 
 // TODO: take an option to grab packages from local GOPATH
 func GoGet(path string) error {
-	return exec.Command("go", "get", path).Run()
+	out, err := exec.Command("go", "get", path).CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("go get failed: %s - %s", string(out), err)
+	}
+	return nil
 }
