@@ -1,10 +1,29 @@
-# gx-go-import
+# gx-go-tool
 
-import a go package and all its dependencies into gx package management.
+A tool to use with the gx package manager for go language packages.
 
-## Usage
+## Usage:
 ```
-$ gx-go-import github.com/whyrusleeping/hellabot
+NAME:
+   gx-go-tool - A new cli application
+
+USAGE:
+   gx-go-import [global options] command [command options] [arguments...]
+   
+VERSION:
+   0.2.0
+   
+AUTHOR(S):
+   whyrusleeping 
+   
+COMMANDS:
+   update	update a packages imports to a new path
+   import	
+   help, h	Shows a list of commands or help for one command
+   
+GLOBAL OPTIONS:
+   --help, -h		show help
+   --version, -v	print the version
 ```
 
 ## NOTE:
