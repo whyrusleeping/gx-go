@@ -22,8 +22,10 @@ func RewriteImports(path string, rw func(string) string, filter func(string) boo
 		}
 		rel = rel[1:]
 
-		if filter(rel) {
-			w.SkipDir()
+		if !filter(rel) {
+			if w.Stat().IsDir() {
+				w.SkipDir()
+			}
 			continue
 		}
 
@@ -38,7 +40,6 @@ func RewriteImports(path string, rw func(string) string, filter func(string) boo
 
 // inspired by godeps rewrite, rewrites import paths with gx vendored names
 func rewriteImportsInFile(fi string, rw func(string) string) error {
-	fmt.Println("REWRITE FI: ", fi)
 	cfg := &printer.Config{Mode: printer.UseSpaces | printer.TabIndent, Tabwidth: 8}
 	fset := token.NewFileSet()
 	file, err := parser.ParseFile(fset, fi, nil, parser.ParseComments)

@@ -49,7 +49,7 @@ func main() {
 			}
 
 			filter := func(in string) bool {
-				return !strings.HasSuffix(in, ".go")
+				return strings.HasSuffix(in, ".go")
 			}
 
 			err = rw.RewriteImports(curpath, rwf, filter)
@@ -260,9 +260,9 @@ func (i *Importer) GxPublishGoPackage(imppath string) (*gx.Dependency, error) {
 func (i *Importer) rewriteImports(pkgpath string) error {
 
 	filter := func(p string) bool {
-		return strings.HasPrefix(p, "vendor") ||
-			strings.HasPrefix(p, ".git") ||
-			!strings.HasSuffix(p, ".go")
+		return !strings.HasPrefix(p, "vendor") &&
+			!strings.HasPrefix(p, ".git") &&
+			strings.HasSuffix(p, ".go")
 	}
 
 	rwf := func(in string) string {
