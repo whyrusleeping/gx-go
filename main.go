@@ -15,6 +15,7 @@ import (
 	cli "github.com/codegangsta/cli"
 	rw "github.com/whyrusleeping/gx-go-tool/rewrite"
 	gx "github.com/whyrusleeping/gx/gxutil"
+	. "github.com/whyrusleeping/stump"
 )
 
 func main() {
@@ -38,8 +39,7 @@ func main() {
 
 			curpath, err := os.Getwd()
 			if err != nil {
-				fmt.Println("error getting working dir: ", err)
-				return
+				Fatal("error getting working dir: ", err)
 			}
 
 			rwf := func(in string) string {
@@ -55,8 +55,7 @@ func main() {
 
 			err = rw.RewriteImports(curpath, rwf, filter)
 			if err != nil {
-				fmt.Println(err)
-				return
+				Fatal(err)
 			}
 		},
 	}
@@ -77,24 +76,21 @@ func main() {
 		Action: func(c *cli.Context) {
 			importer, err := NewImporter(c.Bool("rewrite"))
 			if err != nil {
-				fmt.Println(err)
-				return
+				Fatal(err)
 			}
 
 			importer.yesall = c.Bool("yesall")
 
 			if !c.Args().Present() {
-				fmt.Println("must specify a package name")
-				return
+				Fatal("must specify a package name")
 			}
 
 			pkg := c.Args().First()
-			fmt.Printf("vendoring package %s\n", pkg)
+			Log("vendoring package %s", pkg)
 
 			_, err = importer.GxPublishGoPackage(pkg)
 			if err != nil {
-				log.Println(err)
-				return
+				Fatal(err)
 			}
 		},
 	}
@@ -105,22 +101,19 @@ func main() {
 		Action: func(c *cli.Context) {
 			gopath := os.Getenv("GOPATH")
 			if gopath == "" {
-				fmt.Println("GOPATH not set, cannot derive import path")
-				return
+				Fatal("GOPATH not set, cannot derive import path")
 			}
 
 			cwd, err := os.Getwd()
 			if err != nil {
-				fmt.Println(err)
-				os.Exit(1)
+				Fatal(err)
 			}
 
 			srcdir := path.Join(gopath, "src")
 			srcdir += "/"
 
 			if !strings.HasPrefix(cwd, srcdir) {
-				fmt.Println("package not within GOPATH/src")
-				os.Exit(1)
+				Fatal("package not within GOPATH/src")
 			}
 
 			rel := cwd[len(srcdir):]
@@ -239,7 +232,7 @@ func (i *Importer) GxPublishGoPackage(imppath string) (*gx.Dependency, error) {
 	}
 
 	for n, child := range depsToVendor {
-		fmt.Printf("- processing dep %s for %s [%d / %d]\n", child, imppath, n+1, len(depsToVendor))
+		Log("- processing dep %s for %s [%d / %d]", child, imppath, n+1, len(depsToVendor))
 		childdep, err := i.GxPublishGoPackage(child)
 		if err != nil {
 			return nil, err
@@ -270,7 +263,7 @@ func (i *Importer) GxPublishGoPackage(imppath string) (*gx.Dependency, error) {
 		return nil, err
 	}
 
-	fmt.Printf("published %s as %s\n", imppath, hash)
+	Log("published %s as %s\n", imppath, hash)
 
 	dep := &gx.Dependency{
 		Hash: hash,
