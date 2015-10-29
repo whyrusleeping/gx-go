@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bufio"
 	"errors"
 	"fmt"
 	"go/build"
@@ -68,6 +69,10 @@ func main() {
 				Name:  "rewrite",
 				Usage: "rewrite import paths to use vendored packages",
 			},
+			cli.BoolFlag{
+				Name:  "yesall",
+				Usage: "assume defaults for all options",
+			},
 		},
 		Action: func(c *cli.Context) {
 			importer, err := NewImporter(c.Bool("rewrite"))
@@ -75,6 +80,8 @@ func main() {
 				fmt.Println(err)
 				return
 			}
+
+			importer.yesall = c.Bool("yesall")
 
 			if !c.Args().Present() {
 				fmt.Println("must specify a package name")
@@ -144,6 +151,7 @@ type Importer struct {
 	gopath  string
 	pm      *gx.PM
 	rewrite bool
+	yesall  bool
 }
 
 func NewImporter(rw bool) (*Importer, error) {
@@ -152,10 +160,15 @@ func NewImporter(rw bool) (*Importer, error) {
 		return nil, err
 	}
 
+	cfg, err := gx.LoadConfig()
+	if err != nil {
+		return nil, err
+	}
+
 	return &Importer{
 		pkgs:    make(map[string]*gx.Dependency),
 		gopath:  gp,
-		pm:      gx.NewPM(),
+		pm:      gx.NewPM(cfg),
 		rewrite: rw,
 	}, nil
 }
@@ -190,7 +203,17 @@ func (i *Importer) GxPublishGoPackage(imppath string) (*gx.Dependency, error) {
 		// init as gx package
 		parts := strings.Split(imppath, "/")
 		pkgname := parts[len(parts)-1]
-		err = gx.InitPkg(pkgpath, pkgname, "go")
+		if !i.yesall {
+			p := fmt.Sprintf("enter name for import '%s'", imppath)
+			nname, err := prompt(p, pkgname)
+			if err != nil {
+				return nil, err
+			}
+
+			pkgname = nname
+		}
+
+		err = i.pm.InitPkg(pkgpath, pkgname, "go")
 		if err != nil {
 			return nil, err
 		}
@@ -284,4 +307,17 @@ func GoGet(path string) error {
 		return fmt.Errorf("go get failed: %s - %s", string(out), err)
 	}
 	return nil
+}
+
+func prompt(text, def string) (string, error) {
+	scan := bufio.NewScanner(os.Stdin)
+	fmt.Printf("%s (default: '%s') ", text, def)
+	for scan.Scan() {
+		if scan.Text() != "" {
+			return scan.Text(), nil
+		}
+		return def, nil
+	}
+
+	return "", scan.Err()
 }
