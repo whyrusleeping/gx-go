@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"go/build"
-	"log"
 	"os"
 	"os/exec"
 	"path"
