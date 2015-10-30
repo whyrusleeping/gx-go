@@ -4,11 +4,14 @@ import (
 	"bytes"
 	"fmt"
 	"go/ast"
+	"go/build"
 	"go/parser"
 	"go/printer"
 	"go/token"
 	"os"
+	"path/filepath"
 	"strconv"
+	"strings"
 
 	fs "github.com/kr/fs"
 )
@@ -22,14 +25,25 @@ func RewriteImports(path string, rw func(string) string, filter func(string) boo
 		}
 		rel = rel[1:]
 
-		if !filter(rel) {
-			if w.Stat().IsDir() {
-				w.SkipDir()
-			}
+		if strings.HasPrefix(rel, ".git") {
+			w.SkipDir()
 			continue
 		}
 
-		err := rewriteImportsInFile(w.Path(), rw)
+		if !filter(rel) {
+			continue
+		}
+
+		dir, fi := filepath.Split(w.Path())
+		good, err := build.Default.MatchFile(dir, fi)
+		if err != nil {
+			return err
+		}
+		if !good {
+			continue
+		}
+
+		err = rewriteImportsInFile(w.Path(), rw)
 		if err != nil {
 			fmt.Println("rewrite error: ", err)
 			return err
