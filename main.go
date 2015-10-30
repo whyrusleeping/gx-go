@@ -262,11 +262,12 @@ func (i *Importer) GxPublishGoPackage(imppath string) (*gx.Dependency, error) {
 		return nil, err
 	}
 
-	Log("published %s as %s\n", imppath, hash)
+	Log("published %s as %s", imppath, hash)
 
 	dep := &gx.Dependency{
-		Hash: hash,
-		Name: pkg.Name,
+		Hash:    hash,
+		Name:    pkg.Name,
+		Version: pkg.Version,
 	}
 	i.pkgs[imppath] = dep
 	return dep, nil
