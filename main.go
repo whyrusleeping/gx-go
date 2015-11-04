@@ -108,6 +108,7 @@ func main() {
 		Usage: "go specific hooks to be called by the gx tool",
 		Subcommands: []cli.Command{
 			postImportCommand,
+			reqCheckCommand,
 		},
 	}
 
@@ -166,14 +167,30 @@ var postImportCommand = cli.Command{
 		if !c.Args().Present() {
 			Fatal("no package specified")
 		}
-		pkgname := c.Args().First()
+		dephash := c.Args().First()
 
 		pkg, err := gx.LoadPackageFile(gx.PkgFileName)
 		if err != nil {
 			Fatal(err)
 		}
 
-		err = postImportHook(pkg, pkgname)
+		err = postImportHook(pkg, dephash)
+		if err != nil {
+			Fatal(err)
+		}
+	},
+}
+
+var reqCheckCommand = cli.Command{
+	Name:  "req-check",
+	Usage: "hook called to check if requirements of a package are met",
+	Action: func(c *cli.Context) {
+		if !c.Args().Present() {
+			Fatal("no package specified")
+		}
+		dephash := c.Args().First()
+
+		err := reqCheckHook(dephash)
 		if err != nil {
 			Fatal(err)
 		}
@@ -202,14 +219,14 @@ func postImportHook(pkg *gx.Package, npkgHash string) error {
 	return nil
 }
 
-func reqCheckHook(pkg *gx.Package, args []string) error {
-	if len(args) == 0 {
-		return fmt.Errorf("must specify package to check")
+func reqCheckHook(pkghash string) error {
+	p := filepath.Join("vendor", pkghash)
+	npkg, err := gx.FindPackageInDir(p)
+	if err != nil {
+		return err
 	}
-	//pkgpath := args[0]
-	//filepath.Join(ar
 
-	if pkg.Go != nil && pkg.Go.GoVersion != "" {
+	if npkg.Go != nil && npkg.Go.GoVersion != "" {
 		out, err := exec.Command("go", "version").CombinedOutput()
 		if err != nil {
 			return fmt.Errorf("no go compiler installed")
@@ -222,14 +239,14 @@ func reqCheckHook(pkg *gx.Package, args []string) error {
 
 		havevers := parts[2][2:]
 
-		reqvers := pkg.Go.GoVersion
+		reqvers := npkg.Go.GoVersion
 
 		badreq, err := versionComp(havevers, reqvers)
 		if err != nil {
 			return err
 		}
 		if badreq {
-			return fmt.Errorf("package '%s' requires go version %s, you have %s installed.", pkg.Name, reqvers, havevers)
+			return fmt.Errorf("package '%s' requires go version %s, you have %s installed.", npkg.Name, reqvers, havevers)
 		}
 
 	}
