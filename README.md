@@ -5,10 +5,10 @@ A tool to use with the gx package manager for packages written in go.
 ## Usage:
 ```
 NAME:
-   gx-go-tool - gx extensions for golang
+   gx-go - gx extensions for golang
 
 USAGE:
-   gx-go-tool [global options] command [command options] [arguments...]
+   gx-go [global options] command [command options] [arguments...]
    
 VERSION:
    0.2.0
@@ -19,6 +19,8 @@ AUTHOR(S):
 COMMANDS:
    update	update a packages imports to a new path
    import	import a go package and all its depencies into gx
+   path		prints the import path of the current package within GOPATH
+   hook		go specific hooks to be called by the gx tool
    help, h	Shows a list of commands or help for one command
    
 GLOBAL OPTIONS:

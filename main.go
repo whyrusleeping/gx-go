@@ -19,7 +19,7 @@ import (
 
 func main() {
 	app := cli.NewApp()
-	app.Name = "gx-go-tool"
+	app.Name = "gx-go"
 	app.Author = "whyrusleeping"
 	app.Usage = "gx extensions for golang"
 	app.Version = "0.2.0"
