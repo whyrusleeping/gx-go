@@ -12,7 +12,7 @@ import (
 	"strings"
 
 	cli "github.com/codegangsta/cli"
-	rw "github.com/whyrusleeping/gx-go-tool/rewrite"
+	rw "github.com/whyrusleeping/gx-go/rewrite"
 	gx "github.com/whyrusleeping/gx/gxutil"
 	. "github.com/whyrusleeping/stump"
 )
@@ -37,23 +37,7 @@ func main() {
 			oldimp := c.Args()[0]
 			newimp := c.Args()[1]
 
-			curpath, err := os.Getwd()
-			if err != nil {
-				Fatal("error getting working dir: ", err)
-			}
-
-			rwf := func(in string) string {
-				if in == oldimp {
-					return newimp
-				}
-				return in
-			}
-
-			filter := func(in string) bool {
-				return strings.HasSuffix(in, ".go")
-			}
-
-			err = rw.RewriteImports(curpath, rwf, filter)
+			err := doUpdate(oldimp, newimp)
 			if err != nil {
 				Fatal(err)
 			}
@@ -121,13 +105,58 @@ func main() {
 		},
 	}
 
+	var HookCommand = cli.Command{
+		Name:  "hook",
+		Usage: "go specific hooks to be called by the gx tool",
+		Action: func(c *cli.Context) {
+			if !c.Args().Present() {
+				Fatal("no hook specified!")
+			}
+			sub := c.Args().First()
+
+			pkg, err := gx.LoadPackageFile(gx.PkgFileName)
+			if err != nil {
+				Fatal(err)
+			}
+
+			switch sub {
+			case "post-import":
+				err := postImportHook(pkg, c.Args().Tail())
+				if err != nil {
+					Fatal(err)
+				}
+			}
+		},
+	}
+
 	app.Commands = []cli.Command{
 		UpdateCommand,
 		ImportCommand,
 		PathCommand,
+		HookCommand,
 	}
 
 	app.Run(os.Args)
+}
+
+func doUpdate(oldimp, newimp string) error {
+	curpath, err := os.Getwd()
+	if err != nil {
+		return fmt.Errorf("error getting working dir: ", err)
+	}
+
+	rwf := func(in string) string {
+		if in == oldimp {
+			return newimp
+		}
+		return in
+	}
+
+	filter := func(in string) bool {
+		return strings.HasSuffix(in, ".go")
+	}
+
+	return rw.RewriteImports(curpath, rwf, filter)
 }
 
 func pathIsNotStdlib(path string) bool {
@@ -314,4 +343,56 @@ func prompt(text, def string) (string, error) {
 	}
 
 	return "", scan.Err()
+}
+
+func yesNoPrompt(prompt string, def bool) bool {
+	opts := "[y/N]"
+	if def {
+		opts = "[Y/n]"
+	}
+
+	fmt.Printf("%s %s ", prompt, opts)
+	scan := bufio.NewScanner(os.Stdin)
+	for scan.Scan() {
+		val := strings.ToLower(scan.Text())
+		switch val {
+		case "":
+			return def
+		case "y":
+			return true
+		case "n":
+			return false
+		default:
+			fmt.Println("please type 'y' or 'n'")
+		}
+	}
+
+	panic("unexpected termination of stdin")
+}
+
+func postImportHook(pkg *gx.Package, args []string) error {
+	if len(args) == 0 {
+		return fmt.Errorf("post-import hook: argument expected")
+	}
+
+	npkgHash := args[0]
+	npkgPath := filepath.Join("vendor", npkgHash)
+
+	npkg, err := gx.LoadPackageFile(npkgPath)
+	if err != nil {
+		return err
+	}
+
+	if npkg.Go != nil && npkg.Go.DvcsImport != "" {
+		q := fmt.Sprintf("update imports of %s to the newly imported package?", npkg.Go.DvcsImport)
+		if yesNoPrompt(q, false) {
+			nimp := fmt.Sprintf("%s/%s", npkgHash, npkg.Name)
+			err := doUpdate(npkg.Go.DvcsImport, nimp)
+			if err != nil {
+				return err
+			}
+		}
+	}
+
+	return nil
 }
