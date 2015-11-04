@@ -378,7 +378,7 @@ func postImportHook(pkg *gx.Package, args []string) error {
 	npkgHash := args[0]
 	npkgPath := filepath.Join("vendor", npkgHash)
 
-	npkg, err := gx.LoadPackageFile(npkgPath)
+	npkg, err := gx.FindPackageInDir(npkgPath)
 	if err != nil {
 		return err
 	}
