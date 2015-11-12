@@ -234,22 +234,30 @@ var postInitHookCommand = cli.Command{
 	Name:  "post-init",
 	Usage: "hook called to perform go specific package initialization",
 	Action: func(c *cli.Context) {
-		pkg, err := LoadPackageFile(gx.PkgFileName)
-		if err != nil {
-			Fatal(err)
+		var dir string
+		if c.Args().Present() {
+			dir = c.Args().First()
+		} else {
+			cwd, err := os.Getwd()
+			if err != nil {
+				Fatal("no dir given and cwd failed: ", err)
+			}
+			dir = cwd
 		}
-		cwd, err := os.Getwd()
+
+		pkgpath := filepath.Join(dir, gx.PkgFileName)
+		pkg, err := LoadPackageFile(pkgpath)
 		if err != nil {
 			Fatal(err)
 		}
 
-		imp, _ := packagesGoImport(cwd)
+		imp, _ := packagesGoImport(dir)
 
 		if imp != "" {
 			pkg.Gx.DvcsImport = imp
 		}
 
-		err = gx.SavePackageFile(pkg, gx.PkgFileName)
+		err = gx.SavePackageFile(pkg, pkgpath)
 		if err != nil {
 			Fatal(err)
 		}
