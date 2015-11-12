@@ -92,7 +92,7 @@ func (i *Importer) GxPublishGoPackage(imppath string) (*gx.Dependency, error) {
 
 	pkgpath := path.Join(i.gopath, "src", imppath)
 	pkgFilePath := path.Join(pkgpath, gx.PkgFileName)
-	pkg, err := gx.LoadPackageFile(pkgFilePath)
+	pkg, err := LoadPackageFile(pkgFilePath)
 	if err != nil {
 		if !os.IsNotExist(err) {
 			return nil, err
@@ -116,7 +116,7 @@ func (i *Importer) GxPublishGoPackage(imppath string) (*gx.Dependency, error) {
 			return nil, err
 		}
 
-		pkg, err = gx.LoadPackageFile(pkgFilePath)
+		pkg, err = LoadPackageFile(pkgFilePath)
 		if err != nil {
 			return nil, err
 		}
@@ -163,7 +163,7 @@ func (i *Importer) GxPublishGoPackage(imppath string) (*gx.Dependency, error) {
 		}
 	}
 
-	hash, err := i.pm.PublishPackage(pkgpath, pkg)
+	hash, err := i.pm.PublishPackage(pkgpath, &pkg.PackageBase)
 	if err != nil {
 		return nil, err
 	}

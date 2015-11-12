@@ -2,6 +2,7 @@ package main
 
 import (
 	"bufio"
+	"encoding/json"
 	"fmt"
 	"os"
 	"os/exec"
@@ -14,6 +15,36 @@ import (
 	gx "github.com/whyrusleeping/gx/gxutil"
 	. "github.com/whyrusleeping/stump"
 )
+
+// for go packages, extra info
+type GoInfo struct {
+	DvcsImport string `json:"dvcsimport,omitempty"`
+
+	// GoVersion sets a compiler version requirement, users will be warned if installing
+	// a package using an unsupported compiler
+	GoVersion string `json:"goversion,omitempty"`
+}
+
+type Package struct {
+	gx.PackageBase
+
+	Gx GoInfo `json:"gx,omitempty"`
+}
+
+func LoadPackageFile(name string) (*Package, error) {
+	fi, err := os.Open(name)
+	if err != nil {
+		return nil, err
+	}
+
+	var pkg Package
+	err = json.NewDecoder(fi).Decode(&pkg)
+	if err != nil {
+		return nil, err
+	}
+
+	return &pkg, nil
+}
 
 func main() {
 	app := cli.NewApp()
@@ -109,7 +140,9 @@ func main() {
 		Subcommands: []cli.Command{
 			postImportCommand,
 			reqCheckCommand,
+			postInitHookCommand,
 		},
+		Action: func(c *cli.Context) {},
 	}
 
 	app.Commands = []cli.Command{
@@ -169,7 +202,7 @@ var postImportCommand = cli.Command{
 		}
 		dephash := c.Args().First()
 
-		pkg, err := gx.LoadPackageFile(gx.PkgFileName)
+		pkg, err := LoadPackageFile(gx.PkgFileName)
 		if err != nil {
 			Fatal(err)
 		}
@@ -197,19 +230,62 @@ var reqCheckCommand = cli.Command{
 	},
 }
 
-func postImportHook(pkg *gx.Package, npkgHash string) error {
+var postInitHookCommand = cli.Command{
+	Name:  "post-init",
+	Usage: "hook called to perform go specific package initialization",
+	Action: func(c *cli.Context) {
+		pkg, err := LoadPackageFile(gx.PkgFileName)
+		if err != nil {
+			Fatal(err)
+		}
+		cwd, err := os.Getwd()
+		if err != nil {
+			Fatal(err)
+		}
+
+		imp, _ := packagesGoImport(cwd)
+
+		if imp != "" {
+			pkg.Gx.DvcsImport = imp
+		}
+
+		err = gx.SavePackageFile(pkg, gx.PkgFileName)
+		if err != nil {
+			Fatal(err)
+		}
+	},
+}
+
+func packagesGoImport(p string) (string, error) {
+	gopath := os.Getenv("GOPATH")
+	if gopath == "" {
+		return "", fmt.Errorf("GOPATH not set, cannot derive import path")
+	}
+
+	srcdir := path.Join(gopath, "src")
+	srcdir += "/"
+
+	if !strings.HasPrefix(p, srcdir) {
+		return "", fmt.Errorf("package not within GOPATH/src")
+	}
+
+	return p[len(srcdir):], nil
+}
+
+func postImportHook(pkg *Package, npkgHash string) error {
 	npkgPath := filepath.Join("vendor", npkgHash)
 
-	npkg, err := gx.FindPackageInDir(npkgPath)
+	var npkg Package
+	err := gx.FindPackageInDir(&npkg, npkgPath)
 	if err != nil {
 		return err
 	}
 
-	if npkg.Go != nil && npkg.Go.DvcsImport != "" {
-		q := fmt.Sprintf("update imports of %s to the newly imported package?", npkg.Go.DvcsImport)
+	if npkg.Gx.DvcsImport != "" {
+		q := fmt.Sprintf("update imports of %s to the newly imported package?", npkg.Gx.DvcsImport)
 		if yesNoPrompt(q, false) {
 			nimp := fmt.Sprintf("%s/%s", npkgHash, npkg.Name)
-			err := doUpdate(npkg.Go.DvcsImport, nimp)
+			err := doUpdate(npkg.Gx.DvcsImport, nimp)
 			if err != nil {
 				return err
 			}
@@ -221,12 +297,14 @@ func postImportHook(pkg *gx.Package, npkgHash string) error {
 
 func reqCheckHook(pkghash string) error {
 	p := filepath.Join("vendor", pkghash)
-	npkg, err := gx.FindPackageInDir(p)
+
+	var npkg Package
+	err := gx.FindPackageInDir(&npkg, p)
 	if err != nil {
 		return err
 	}
 
-	if npkg.Go != nil && npkg.Go.GoVersion != "" {
+	if npkg.Gx.GoVersion != "" {
 		out, err := exec.Command("go", "version").CombinedOutput()
 		if err != nil {
 			return fmt.Errorf("no go compiler installed")
@@ -239,7 +317,7 @@ func reqCheckHook(pkghash string) error {
 
 		havevers := parts[2][2:]
 
-		reqvers := npkg.Go.GoVersion
+		reqvers := npkg.Gx.GoVersion
 
 		badreq, err := versionComp(havevers, reqvers)
 		if err != nil {
