@@ -79,7 +79,23 @@ func getGoPath() (string, error) {
 	return gopath, nil
 }
 
+// this function is an attempt to keep subdirectories of a package as part of
+// the same logical gx package. It has a special case for golang.org/x/ packages
+func getBaseDVCS(path string) string {
+	parts := strings.Split(path, "/")
+	depth := 3
+	if parts[0] == "golang.org" && parts[1] == "x" {
+		depth = 4
+	}
+
+	if len(parts) > depth {
+		return strings.Join(parts[:3], "/")
+	}
+	return path
+}
+
 func (i *Importer) GxPublishGoPackage(imppath string) (*gx.Dependency, error) {
+	imppath = getBaseDVCS(imppath)
 	if d, ok := i.pkgs[imppath]; ok {
 		return d, nil
 	}
@@ -131,7 +147,7 @@ func (i *Importer) GxPublishGoPackage(imppath string) (*gx.Dependency, error) {
 	var depsToVendor []string
 
 	for _, child := range gopkg.Imports {
-		if pathIsNotStdlib(child) {
+		if pathIsNotStdlib(child) && !strings.HasPrefix(child, imppath) {
 			depsToVendor = append(depsToVendor, child)
 		}
 	}
