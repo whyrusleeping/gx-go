@@ -63,10 +63,15 @@ func NewImporter(rw bool) (*Importer, error) {
 		return nil, err
 	}
 
+	pm, err := gx.NewPM(cfg)
+	if err != nil {
+		return nil, err
+	}
+
 	return &Importer{
 		pkgs:    make(map[string]*gx.Dependency),
 		gopath:  gp,
-		pm:      gx.NewPM(cfg),
+		pm:      pm,
 		rewrite: rw,
 	}, nil
 }
