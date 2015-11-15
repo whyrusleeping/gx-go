@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"go/build"
+	"io/ioutil"
 	"os"
 	"os/exec"
 	"path"
@@ -22,10 +23,7 @@ func doUpdate(oldimp, newimp string) error {
 	}
 
 	rwf := func(in string) string {
-		if in == oldimp {
-			return newimp
-		}
-		return in
+		return strings.Replace(in, oldimp+"/", newimp+"/", 1)
 	}
 
 	filter := func(in string) bool {
@@ -108,7 +106,9 @@ func (i *Importer) GxPublishGoPackage(imppath string) (*gx.Dependency, error) {
 	// make sure its local
 	err := GoGet(imppath)
 	if err != nil {
-		return nil, err
+		if !strings.Contains(err.Error(), "no buildable Go source files") {
+			return nil, err
+		}
 	}
 
 	pkgpath := path.Join(i.gopath, "src", imppath)
@@ -144,21 +144,16 @@ func (i *Importer) GxPublishGoPackage(imppath string) (*gx.Dependency, error) {
 	}
 
 	// recurse!
-	gopkg, err := build.Import(imppath, "", 0)
+	depsToVendor, err := i.depsToVendorForPackage(imppath)
 	if err != nil {
 		return nil, err
 	}
 
-	var depsToVendor []string
-
-	for _, child := range gopkg.Imports {
-		if pathIsNotStdlib(child) && !strings.HasPrefix(child, imppath) {
-			depsToVendor = append(depsToVendor, child)
-		}
-	}
-
 	for n, child := range depsToVendor {
 		Log("- processing dep %s for %s [%d / %d]", child, imppath, n+1, len(depsToVendor))
+		if strings.HasPrefix(child, imppath) {
+			continue
+		}
 		childdep, err := i.GxPublishGoPackage(child)
 		if err != nil {
 			return nil, err
@@ -198,6 +193,61 @@ func (i *Importer) GxPublishGoPackage(imppath string) (*gx.Dependency, error) {
 	}
 	i.pkgs[imppath] = dep
 	return dep, nil
+}
+
+func (i *Importer) depsToVendorForPackage(path string) ([]string, error) {
+	rdeps := make(map[string]struct{})
+	gopkg, err := build.Import(path, "", 0)
+	if err != nil {
+		_, ok := err.(*build.NoGoError)
+		if !ok {
+			return nil, err
+		}
+		// if theres no go code here, there still might be some in lower directories
+	} else {
+		// if the package existed and has go code in it
+		for _, child := range gopkg.Imports {
+			if pathIsNotStdlib(child) && !strings.HasPrefix(child, path) {
+				rdeps[child] = struct{}{}
+			}
+		}
+	}
+
+	dirents, err := ioutil.ReadDir(filepath.Join(i.gopath, "src", path))
+	if err != nil {
+		return nil, err
+	}
+
+	for _, e := range dirents {
+		if !e.IsDir() || skipDir(e.Name()) {
+			continue
+		}
+
+		out, err := i.depsToVendorForPackage(filepath.Join(path, e.Name()))
+		if err != nil {
+			return nil, err
+		}
+
+		for _, o := range out {
+			rdeps[o] = struct{}{}
+		}
+	}
+
+	var depsToVendor []string
+	for d, _ := range rdeps {
+		depsToVendor = append(depsToVendor, d)
+	}
+
+	return depsToVendor, nil
+}
+
+func skipDir(name string) bool {
+	switch name {
+	case "Godeps", "vendor", ".git":
+		return true
+	default:
+		return false
+	}
 }
 
 func (i *Importer) rewriteImports(pkgpath string) error {

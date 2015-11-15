@@ -76,6 +76,9 @@ func main() {
 	var ImportCommand = cli.Command{
 		Name:  "import",
 		Usage: "import a go package and all its depencies into gx",
+		Description: `imports a given go package and all of its dependencies into gx
+producing a package.json for each, and outputting a package hash
+for each.`,
 		Flags: []cli.Flag{
 			cli.BoolFlag{
 				Name:  "rewrite",
@@ -134,6 +137,52 @@ func main() {
 		},
 	}
 
+	var RewriteCommand = cli.Command{
+		Name:  "rewrite",
+		Usage: "temporary hack to evade causality",
+		Flags: []cli.Flag{
+			cli.BoolFlag{
+				Name:  "undo",
+				Usage: "rewrite import paths back to dvcs",
+			},
+		},
+		Action: func(c *cli.Context) {
+			pkg, err := LoadPackageFile(gx.PkgFileName)
+			if err != nil {
+				Fatal(err)
+			}
+
+			cwd, err := os.Getwd()
+			if err != nil {
+				Fatal(err)
+			}
+
+			undo := c.Bool("undo")
+
+			dir := filepath.Join(cwd, "vendor")
+			for _, dep := range pkg.Dependencies {
+				var cpkg Package
+				pdir := filepath.Join(dir, dep.Hash)
+				err := gx.FindPackageInDir(&cpkg, pdir)
+				if err != nil {
+					Fatal(err)
+				}
+
+				if cpkg.Gx.DvcsImport != "" {
+					from := cpkg.Gx.DvcsImport
+					to := dep.Hash + "/" + cpkg.Name
+					if undo {
+						from, to = to, from
+					}
+					err := doUpdate(from, to)
+					if err != nil {
+						Fatal(err)
+					}
+				}
+			}
+		},
+	}
+
 	var HookCommand = cli.Command{
 		Name:  "hook",
 		Usage: "go specific hooks to be called by the gx tool",
@@ -150,6 +199,7 @@ func main() {
 		ImportCommand,
 		PathCommand,
 		HookCommand,
+		RewriteCommand,
 	}
 
 	app.Run(os.Args)
