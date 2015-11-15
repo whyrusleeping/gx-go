@@ -23,7 +23,15 @@ func doUpdate(oldimp, newimp string) error {
 	}
 
 	rwf := func(in string) string {
-		return strings.Replace(in, oldimp+"/", newimp+"/", 1)
+		if in == oldimp {
+			return newimp
+		}
+
+		if strings.HasPrefix(in, oldimp+"/") {
+			return strings.Replace(in, oldimp, newimp, 1)
+		}
+
+		return in
 	}
 
 	filter := func(in string) bool {
