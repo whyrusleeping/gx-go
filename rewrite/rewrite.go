@@ -1,6 +1,7 @@
 package rewrite
 
 import (
+	"bufio"
 	"bytes"
 	"fmt"
 	"go/ast"
@@ -10,6 +11,7 @@ import (
 	"go/token"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strconv"
 	"strings"
 
@@ -17,6 +19,7 @@ import (
 )
 
 func RewriteImports(path string, rw func(string) string, filter func(string) bool) error {
+	fmt.Println("RW IMPS: ", path)
 	w := fs.Walk(path)
 	for w.Step() {
 		rel := w.Path()[len(path):]
@@ -54,6 +57,7 @@ func RewriteImports(path string, rw func(string) string, filter func(string) boo
 
 // inspired by godeps rewrite, rewrites import paths with gx vendored names
 func rewriteImportsInFile(fi string, rw func(string) string) error {
+	fmt.Println("RWISADASD: ", fi)
 	cfg := &printer.Config{Mode: printer.UseSpaces | printer.TabIndent, Tabwidth: 8}
 	fset := token.NewFileSet()
 	file, err := parser.ParseFile(fset, fi, nil, parser.ParseComments)
@@ -76,14 +80,22 @@ func rewriteImportsInFile(fi string, rw func(string) string) error {
 		}
 	}
 
-	if !changed {
-		return nil
-	}
-
 	var buffer bytes.Buffer
 	if err = cfg.Fprint(&buffer, fset, file); err != nil {
 		return err
 	}
+
+	pathCh, err := fixCanonicalImports(buffer.Bytes())
+	if err != nil {
+		return err
+	}
+
+	fmt.Println(buffer.Bytes())
+
+	if !(changed || pathCh) {
+		return nil
+	}
+
 	fset = token.NewFileSet()
 	file, err = parser.ParseFile(fset, fi, &buffer, parser.ParseComments)
 	ast.SortImports(fset, file)
@@ -100,4 +112,50 @@ func rewriteImportsInFile(fi string, rw func(string) string) error {
 	}
 
 	return os.Rename(wpath, fi)
+}
+
+func fixCanonicalImports(buf []byte) (bool, error) {
+	fmt.Println("FIX CANON")
+	var i int
+	var changed bool
+	for {
+		n, tok, err := bufio.ScanLines(buf[i:], true)
+		if err != nil {
+			return false, err
+		}
+		if n == 0 {
+			return changed, nil
+		}
+		i += n
+
+		stripped := stripImportComment(tok)
+		if stripped != nil {
+			nstr := copy(tok, stripped)
+			copy(tok[nstr:], bytes.Repeat([]byte(" "), len(tok)-nstr))
+			changed = true
+		}
+	}
+}
+
+// more code from our friends over at godep
+const (
+	importAnnotation = `import\s+(?:"[^"]*"|` + "`[^`]*`" + `)`
+	importComment    = `(?://\s*` + importAnnotation + `\s*$|/\*\s*` + importAnnotation + `\s*\*/)`
+)
+
+var (
+	importCommentRE = regexp.MustCompile(`\s*(package\s+\w+)\s+` + importComment + `(.*)`)
+	pkgPrefix       = []byte("package ")
+)
+
+func stripImportComment(line []byte) []byte {
+	if !bytes.HasPrefix(line, pkgPrefix) {
+		// Fast path; this will skip all but one line in the file.
+		// This assumes there is no whitespace before the keyword.
+		return nil
+	}
+	if m := importCommentRE.FindSubmatch(line); m != nil {
+		return append(m[1], m[2]...)
+	}
+	return nil
 }
