@@ -19,7 +19,6 @@ import (
 )
 
 func RewriteImports(path string, rw func(string) string, filter func(string) bool) error {
-	fmt.Println("RW IMPS: ", path)
 	w := fs.Walk(path)
 	for w.Step() {
 		rel := w.Path()[len(path):]
@@ -57,7 +56,6 @@ func RewriteImports(path string, rw func(string) string, filter func(string) boo
 
 // inspired by godeps rewrite, rewrites import paths with gx vendored names
 func rewriteImportsInFile(fi string, rw func(string) string) error {
-	fmt.Println("RWISADASD: ", fi)
 	cfg := &printer.Config{Mode: printer.UseSpaces | printer.TabIndent, Tabwidth: 8}
 	fset := token.NewFileSet()
 	file, err := parser.ParseFile(fset, fi, nil, parser.ParseComments)
@@ -115,7 +113,6 @@ func rewriteImportsInFile(fi string, rw func(string) string) error {
 }
 
 func fixCanonicalImports(buf []byte) (bool, error) {
-	fmt.Println("FIX CANON")
 	var i int
 	var changed bool
 	for {
