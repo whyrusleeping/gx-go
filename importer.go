@@ -112,7 +112,7 @@ func (i *Importer) GxPublishGoPackage(imppath string) (*gx.Dependency, error) {
 	}
 
 	// make sure its local
-	err := GoGet(imppath)
+	err := i.GoGet(imppath)
 	if err != nil {
 		if !strings.Contains(err.Error(), "no buildable Go source files") {
 			return nil, err
@@ -279,8 +279,16 @@ func (i *Importer) rewriteImports(pkgpath string) error {
 }
 
 // TODO: take an option to grab packages from local GOPATH
-func GoGet(path string) error {
-	out, err := exec.Command("go", "get", path).CombinedOutput()
+func (imp *Importer) GoGet(path string) error {
+	cmd := exec.Command("go", "get", path)
+	env := os.Environ()
+	for i, e := range env {
+		if strings.HasPrefix(e, "GOPATH=") {
+			env[i] = "GOPATH=" + imp.gopath
+		}
+	}
+	cmd.Env = env
+	out, err := cmd.CombinedOutput()
 	if err != nil {
 		return fmt.Errorf("go get failed: %s - %s", string(out), err)
 	}

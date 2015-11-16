@@ -88,8 +88,6 @@ func rewriteImportsInFile(fi string, rw func(string) string) error {
 		return err
 	}
 
-	fmt.Println(buffer.Bytes())
-
 	if !(changed || pathCh) {
 		return nil
 	}

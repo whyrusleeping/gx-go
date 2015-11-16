@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"encoding/json"
 	"fmt"
+	"io/ioutil"
 	"os"
 	"os/exec"
 	"path"
@@ -97,11 +98,27 @@ for each.`,
 				Name:  "yesall",
 				Usage: "assume defaults for all options",
 			},
+			cli.BoolFlag{
+				Name:  "tmpdir",
+				Usage: "create and use a temporary directory for the GOPATH",
+			},
 		},
 		Action: func(c *cli.Context) {
 			importer, err := NewImporter(c.Bool("rewrite"))
 			if err != nil {
 				Fatal(err)
+			}
+
+			if c.Bool("tmpdir") {
+				dir, err := ioutil.TempDir("", "gx-go-import")
+				if err != nil {
+					Fatal("creating temp dir:", err)
+				}
+				importer.gopath = dir
+				err = os.Setenv("GOPATH", dir)
+				if err != nil {
+					Fatal("setting GOPATH: ", err)
+				}
 			}
 
 			importer.yesall = c.Bool("yesall")
