@@ -18,6 +18,8 @@ import (
 	. "github.com/whyrusleeping/stump"
 )
 
+var vendorDir = filepath.Join("vendor", "gx")
+
 var cwd string
 
 // for go packages, extra info
@@ -56,6 +58,16 @@ func main() {
 	app.Author = "whyrusleeping"
 	app.Usage = "gx extensions for golang"
 	app.Version = "0.2.0"
+	app.Flags = []cli.Flag{
+		cli.BoolFlag{
+			Name:  "verbose",
+			Usage: "turn on verbose output",
+		},
+	}
+	app.Before = func(c *cli.Context) error {
+		Verbose = c.Bool("verbose")
+		return nil
+	}
 
 	mcwd, err := os.Getwd()
 	if err != nil {
@@ -76,10 +88,34 @@ func main() {
 			oldimp := c.Args()[0]
 			newimp := c.Args()[1]
 
-			err := doUpdate(oldimp, newimp)
+			err := doUpdate(cwd, oldimp, newimp)
 			if err != nil {
 				Fatal(err)
 			}
+		},
+	}
+
+	var DepMapCommand = cli.Command{
+		Name:  "dep-map",
+		Usage: "prints out a json dep map for usage by 'import --map'",
+		Action: func(c *cli.Context) {
+			pkg, err := LoadPackageFile(gx.PkgFileName)
+			if err != nil {
+				Fatal(err)
+			}
+
+			m := make(map[string]string)
+			err = buildMap(pkg, m)
+			if err != nil {
+				Fatal(err)
+			}
+
+			out, err := json.MarshalIndent(m, "", "  ")
+			if err != nil {
+				Fatal(err)
+			}
+
+			os.Stdout.Write(out)
 		},
 	}
 
@@ -102,23 +138,46 @@ for each.`,
 				Name:  "tmpdir",
 				Usage: "create and use a temporary directory for the GOPATH",
 			},
+			cli.StringFlag{
+				Name:  "map",
+				Usage: "json document mapping imports to prexisting hashes",
+			},
 		},
 		Action: func(c *cli.Context) {
-			importer, err := NewImporter(c.Bool("rewrite"))
-			if err != nil {
-				Fatal(err)
+			var mapping map[string]string
+			preset := c.String("map")
+			if preset != "" {
+				err := loadMap(&mapping, preset)
+				if err != nil {
+					Fatal(err)
+				}
 			}
 
+			var gopath string
 			if c.Bool("tmpdir") {
 				dir, err := ioutil.TempDir("", "gx-go-import")
 				if err != nil {
 					Fatal("creating temp dir:", err)
 				}
-				importer.gopath = dir
 				err = os.Setenv("GOPATH", dir)
 				if err != nil {
 					Fatal("setting GOPATH: ", err)
 				}
+				Log("setting GOPATH to", dir)
+
+				gopath = dir
+			} else {
+				gp, err := getGoPath()
+				if err != nil {
+					Fatal("couldnt determine gopath:", err)
+				}
+
+				gopath = gp
+			}
+
+			importer, err := NewImporter(c.Bool("rewrite"), gopath, mapping)
+			if err != nil {
+				Fatal(err)
 			}
 
 			importer.yesall = c.Bool("yesall")
@@ -173,13 +232,20 @@ for each.`,
 				Fatal(err)
 			}
 
+			dir := filepath.Join(cwd, vendorDir)
+			if c.Args().Present() {
+				dir = c.Args().First()
+			}
+
 			undo := c.Bool("undo")
 
+			VLog("  - building rewrite mapping")
 			mapping := make(map[string]string)
-			err = buildRewriteMapping(pkg, mapping, undo)
+			err = buildRewriteMapping(pkg, dir, mapping, undo)
 			if err != nil {
 				Fatal(err)
 			}
+			VLog("  - rewrite mapping complete")
 
 			rwm := func(in string) string {
 				m, ok := mapping[in]
@@ -203,10 +269,12 @@ for each.`,
 				return strings.HasSuffix(s, ".go")
 			}
 
+			VLog("  - rewriting imports")
 			err = rw.RewriteImports(cwd, rwm, filter)
 			if err != nil {
 				Fatal(err)
 			}
+			VLog("  - finished!")
 		},
 	}
 
@@ -218,16 +286,18 @@ for each.`,
 			reqCheckCommand,
 			postInitHookCommand,
 			postUpdateHookCommand,
+			postInstallHookCommand,
 		},
 		Action: func(c *cli.Context) {},
 	}
 
 	app.Commands = []cli.Command{
-		UpdateCommand,
+		DepMapCommand,
+		HookCommand,
 		ImportCommand,
 		PathCommand,
-		HookCommand,
 		RewriteCommand,
+		UpdateCommand,
 	}
 
 	app.Run(os.Args)
@@ -338,6 +408,40 @@ var postInitHookCommand = cli.Command{
 	},
 }
 
+var postInstallHookCommand = cli.Command{
+	Name:  "post-install",
+	Usage: "post install hook for newly installed go packages",
+	Action: func(c *cli.Context) {
+		if !c.Args().Present() {
+			Fatal("must specify path to newly installed package")
+		}
+		npkg := c.Args().First()
+		// update sub-package refs here
+		// ex:
+		// if this package is 'github.com/X/Y' replace all imports
+		// matching 'github.com/X/Y*' with 'gx/<hash>/name*'
+
+		var pkg Package
+		err := gx.FindPackageInDir(&pkg, npkg)
+		if err != nil {
+			Fatal(err)
+		}
+
+		if pkg.Gx.DvcsImport == "" {
+			// nothing to do
+			return
+		}
+
+		hash := filepath.Base(npkg)
+		newimp := "gx/" + hash + "/" + pkg.Name
+
+		err = doUpdate(npkg, pkg.Gx.DvcsImport, newimp)
+		if err != nil {
+			Fatal(err)
+		}
+	},
+}
+
 var postUpdateHookCommand = cli.Command{
 	Name:  "post-update",
 	Usage: "rewrite go package imports to new versions",
@@ -347,7 +451,7 @@ var postUpdateHookCommand = cli.Command{
 		}
 		before := c.Args()[0]
 		after := c.Args()[1]
-		err := doUpdate(before, after)
+		err := doUpdate(cwd, before, after)
 		if err != nil {
 			Fatal(err)
 		}
@@ -371,7 +475,7 @@ func packagesGoImport(p string) (string, error) {
 }
 
 func postImportHook(pkg *Package, npkgHash string) error {
-	npkgPath := filepath.Join("vendor", npkgHash)
+	npkgPath := filepath.Join(vendorDir, npkgHash)
 
 	var npkg Package
 	err := gx.FindPackageInDir(&npkg, npkgPath)
@@ -382,8 +486,8 @@ func postImportHook(pkg *Package, npkgHash string) error {
 	if npkg.Gx.DvcsImport != "" {
 		q := fmt.Sprintf("update imports of %s to the newly imported package?", npkg.Gx.DvcsImport)
 		if yesNoPrompt(q, false) {
-			nimp := fmt.Sprintf("%s/%s", npkgHash, npkg.Name)
-			err := doUpdate(npkg.Gx.DvcsImport, nimp)
+			nimp := fmt.Sprintf("gx/%s/%s", npkgHash, npkg.Name)
+			err := doUpdate(cwd, npkg.Gx.DvcsImport, nimp)
 			if err != nil {
 				return err
 			}
@@ -394,7 +498,7 @@ func postImportHook(pkg *Package, npkgHash string) error {
 }
 
 func reqCheckHook(pkghash string) error {
-	p := filepath.Join("vendor", pkghash)
+	p := filepath.Join(vendorDir, pkghash)
 
 	var npkg Package
 	err := gx.FindPackageInDir(&npkg, p)
@@ -461,11 +565,10 @@ func versionComp(have, req string) (bool, error) {
 	return false, nil
 }
 
-func buildRewriteMapping(pkg *Package, m map[string]string, undo bool) error {
-	dir := filepath.Join(cwd, "vendor")
+func buildRewriteMapping(pkg *Package, pkgdir string, m map[string]string, undo bool) error {
 	for _, dep := range pkg.Dependencies {
 		var cpkg Package
-		pdir := filepath.Join(dir, dep.Hash)
+		pdir := filepath.Join(pkgdir, dep.Hash)
 		err := gx.FindPackageInDir(&cpkg, pdir)
 		if err != nil {
 			Fatal(err)
@@ -480,11 +583,50 @@ func buildRewriteMapping(pkg *Package, m map[string]string, undo bool) error {
 			m[from] = to
 		}
 
-		err = buildRewriteMapping(&cpkg, m, undo)
+		err = buildRewriteMapping(&cpkg, pkgdir, m, undo)
 		if err != nil {
 			return err
 		}
 	}
 
 	return nil
+}
+
+func buildMap(pkg *Package, m map[string]string) error {
+	for _, dep := range pkg.Dependencies {
+		var ch Package
+		err := gx.FindPackageInDir(&ch, filepath.Join("vendor", "gx", dep.Hash))
+		if err != nil {
+			return err
+		}
+
+		if ch.Gx.DvcsImport != "" {
+			e, ok := m[ch.Gx.DvcsImport]
+			if ok {
+				if e != dep.Hash {
+					Log("have two dep packages with same import path: ", ch.Gx.DvcsImport)
+					Log("  - ", e)
+					Log("  - ", dep.Hash)
+				}
+				continue
+			}
+			m[ch.Gx.DvcsImport] = dep.Hash
+		}
+
+		err = buildMap(&ch, m)
+		if err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func loadMap(i interface{}, file string) error {
+	fi, err := os.Open(file)
+	if err != nil {
+		return err
+	}
+	defer fi.Close()
+
+	return json.NewDecoder(fi).Decode(i)
 }

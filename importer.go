@@ -16,12 +16,7 @@ import (
 	. "github.com/whyrusleeping/stump"
 )
 
-func doUpdate(oldimp, newimp string) error {
-	curpath, err := os.Getwd()
-	if err != nil {
-		return fmt.Errorf("error getting working dir: ", err)
-	}
-
+func doUpdate(dir, oldimp, newimp string) error {
 	rwf := func(in string) string {
 		if in == oldimp {
 			return newimp
@@ -35,10 +30,10 @@ func doUpdate(oldimp, newimp string) error {
 	}
 
 	filter := func(in string) bool {
-		return strings.HasSuffix(in, ".go")
+		return strings.HasSuffix(in, ".go") && !strings.HasPrefix(in, "vendor")
 	}
 
-	return rw.RewriteImports(curpath, rwf, filter)
+	return rw.RewriteImports(dir, rwf, filter)
 }
 
 func pathIsNotStdlib(path string) bool {
@@ -56,14 +51,12 @@ type Importer struct {
 	pm      *gx.PM
 	rewrite bool
 	yesall  bool
+	preMap  map[string]string
+
+	bctx build.Context
 }
 
-func NewImporter(rw bool) (*Importer, error) {
-	gp, err := getGoPath()
-	if err != nil {
-		return nil, err
-	}
-
+func NewImporter(rw bool, gopath string, premap map[string]string) (*Importer, error) {
 	cfg, err := gx.LoadConfig()
 	if err != nil {
 		return nil, err
@@ -74,11 +67,20 @@ func NewImporter(rw bool) (*Importer, error) {
 		return nil, err
 	}
 
+	if premap == nil {
+		premap = make(map[string]string)
+	}
+
+	bctx := build.Default
+	bctx.GOPATH = gopath
+
 	return &Importer{
 		pkgs:    make(map[string]*gx.Dependency),
-		gopath:  gp,
+		gopath:  gopath,
 		pm:      pm,
 		rewrite: rw,
+		preMap:  premap,
+		bctx:    bctx,
 	}, nil
 }
 
@@ -95,9 +97,11 @@ func getGoPath() (string, error) {
 func getBaseDVCS(path string) string {
 	parts := strings.Split(path, "/")
 	depth := 3
-	if parts[0] == "golang.org" && parts[1] == "x" {
-		depth = 4
-	}
+	/*
+		if parts[0] == "golang.org" && parts[1] == "x" {
+			depth = 4
+		}
+	*/
 
 	if len(parts) > depth {
 		return strings.Join(parts[:3], "/")
@@ -109,6 +113,21 @@ func (i *Importer) GxPublishGoPackage(imppath string) (*gx.Dependency, error) {
 	imppath = getBaseDVCS(imppath)
 	if d, ok := i.pkgs[imppath]; ok {
 		return d, nil
+	}
+
+	if hash, ok := i.preMap[imppath]; ok {
+		pkg, err := i.pm.GetPackage(hash)
+		if err != nil {
+			return nil, err
+		}
+
+		dep := &gx.Dependency{
+			Hash:    hash,
+			Name:    pkg.Name,
+			Version: pkg.Version,
+		}
+		i.pkgs[imppath] = dep
+		return dep, nil
 	}
 
 	// make sure its local
@@ -140,7 +159,7 @@ func (i *Importer) GxPublishGoPackage(imppath string) (*gx.Dependency, error) {
 			pkgname = nname
 		}
 
-		err = i.pm.InitPkg(pkgpath, pkgname, "go")
+		err = i.pm.InitPkg(pkgpath, pkgname, "go", nil)
 		if err != nil {
 			return nil, err
 		}
@@ -187,6 +206,11 @@ func (i *Importer) GxPublishGoPackage(imppath string) (*gx.Dependency, error) {
 		}
 	}
 
+	err = writeGxIgnore(pkgpath, []string{"Godeps/*"})
+	if err != nil {
+		return nil, err
+	}
+
 	hash, err := i.pm.PublishPackage(pkgpath, &pkg.PackageBase)
 	if err != nil {
 		return nil, err
@@ -205,7 +229,8 @@ func (i *Importer) GxPublishGoPackage(imppath string) (*gx.Dependency, error) {
 
 func (i *Importer) depsToVendorForPackage(path string) ([]string, error) {
 	rdeps := make(map[string]struct{})
-	gopkg, err := build.Import(path, "", 0)
+
+	gopkg, err := i.bctx.Import(path, "", 0)
 	if err != nil {
 		_, ok := err.(*build.NoGoError)
 		if !ok {
@@ -214,7 +239,13 @@ func (i *Importer) depsToVendorForPackage(path string) ([]string, error) {
 		// if theres no go code here, there still might be some in lower directories
 	} else {
 		// if the package existed and has go code in it
+		gdeps := getBaseDVCS(path) + "/Godeps/_workspace/src/"
 		for _, child := range gopkg.Imports {
+			if strings.HasPrefix(child, gdeps) {
+				child = child[len(gdeps):]
+			}
+
+			child = getBaseDVCS(child)
 			if pathIsNotStdlib(child) && !strings.HasPrefix(child, path) {
 				rdeps[child] = struct{}{}
 			}
@@ -263,16 +294,34 @@ func (i *Importer) rewriteImports(pkgpath string) error {
 	filter := func(p string) bool {
 		return !strings.HasPrefix(p, "vendor") &&
 			!strings.HasPrefix(p, ".git") &&
-			strings.HasSuffix(p, ".go")
+			strings.HasSuffix(p, ".go") &&
+			!strings.HasPrefix(p, "Godeps")
 	}
 
+	base := pkgpath[len(i.gopath)+5:]
+	gdepath := base + "/Godeps/_workspace/src/"
 	rwf := func(in string) string {
-		dep, ok := i.pkgs[in]
-		if !ok {
-			return in
+		if strings.HasPrefix(in, gdepath) {
+			in = in[len(gdepath):]
 		}
 
-		return dep.Hash + "/" + dep.Name
+		dep, ok := i.pkgs[in]
+		if ok {
+			return "gx/" + dep.Hash + "/" + dep.Name
+		}
+
+		parts := strings.Split(in, "/")
+		if len(parts) > 3 {
+			obase := strings.Join(parts[:3], "/")
+			dep, bok := i.pkgs[obase]
+			if !bok {
+				return in
+			}
+
+			return strings.Replace(in, obase, "gx/"+dep.Hash+"/"+dep.Name, 1)
+		}
+
+		return in
 	}
 
 	return rw.RewriteImports(pkgpath, rwf, filter)
@@ -293,4 +342,8 @@ func (imp *Importer) GoGet(path string) error {
 		return fmt.Errorf("go get failed: %s - %s", string(out), err)
 	}
 	return nil
+}
+
+func writeGxIgnore(dir string, ignore []string) error {
+	return ioutil.WriteFile(filepath.Join(dir, ".gxignore"), []byte(strings.Join(ignore, "\n")), 0644)
 }

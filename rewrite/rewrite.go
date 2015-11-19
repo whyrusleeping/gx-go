@@ -27,7 +27,7 @@ func RewriteImports(path string, rw func(string) string, filter func(string) boo
 		}
 		rel = rel[1:]
 
-		if strings.HasPrefix(rel, ".git") {
+		if strings.HasPrefix(rel, ".git") || strings.HasPrefix(rel, "vendor") {
 			w.SkipDir()
 			continue
 		}
