@@ -170,6 +170,9 @@ func (i *Importer) GxPublishGoPackage(imppath string) (*gx.Dependency, error) {
 		}
 	}
 
+	// wipe out existing dependencies
+	pkg.Dependencies = nil
+
 	// recurse!
 	depsToVendor, err := i.depsToVendorForPackage(imppath)
 	if err != nil {
@@ -194,16 +197,14 @@ func (i *Importer) GxPublishGoPackage(imppath string) (*gx.Dependency, error) {
 		return nil, err
 	}
 
-	if i.rewrite {
-		fullpkgpath, err := filepath.Abs(pkgpath)
-		if err != nil {
-			return nil, err
-		}
+	fullpkgpath, err := filepath.Abs(pkgpath)
+	if err != nil {
+		return nil, err
+	}
 
-		err = i.rewriteImports(fullpkgpath)
-		if err != nil {
-			return nil, err
-		}
+	err = i.rewriteImports(fullpkgpath)
+	if err != nil {
+		return nil, err
 	}
 
 	err = writeGxIgnore(pkgpath, []string{"Godeps/*"})
@@ -238,9 +239,10 @@ func (i *Importer) depsToVendorForPackage(path string) ([]string, error) {
 		}
 		// if theres no go code here, there still might be some in lower directories
 	} else {
+		imps := append(gopkg.Imports, gopkg.TestImports...)
 		// if the package existed and has go code in it
 		gdeps := getBaseDVCS(path) + "/Godeps/_workspace/src/"
-		for _, child := range gopkg.Imports {
+		for _, child := range imps {
 			if strings.HasPrefix(child, gdeps) {
 				child = child[len(gdeps):]
 			}
@@ -303,6 +305,11 @@ func (i *Importer) rewriteImports(pkgpath string) error {
 	rwf := func(in string) string {
 		if strings.HasPrefix(in, gdepath) {
 			in = in[len(gdepath):]
+		}
+
+		if !i.rewrite {
+			// if rewrite not specified, just fixup godeps paths
+			return in
 		}
 
 		dep, ok := i.pkgs[in]

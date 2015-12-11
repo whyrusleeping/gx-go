@@ -18,7 +18,7 @@ import (
 	. "github.com/whyrusleeping/stump"
 )
 
-var vendorDir = filepath.Join("vendor", "gx")
+var vendorDir = filepath.Join("vendor", "gx", "ipfs")
 
 var cwd string
 
@@ -247,34 +247,10 @@ for each.`,
 			}
 			VLog("  - rewrite mapping complete")
 
-			rwm := func(in string) string {
-				m, ok := mapping[in]
-				if ok {
-					return m
-				}
-
-				for k, v := range mapping {
-					if strings.HasPrefix(in, k+"/") {
-						nmapping := strings.Replace(in, k, v, 1)
-						mapping[in] = nmapping
-						return nmapping
-					}
-				}
-
-				mapping[in] = in
-				return in
-			}
-
-			filter := func(s string) bool {
-				return strings.HasSuffix(s, ".go")
-			}
-
-			VLog("  - rewriting imports")
-			err = rw.RewriteImports(cwd, rwm, filter)
+			err = doRewrite(pkg, cwd, mapping)
 			if err != nil {
 				Fatal(err)
 			}
-			VLog("  - finished!")
 		},
 	}
 
@@ -427,19 +403,55 @@ var postInstallHookCommand = cli.Command{
 			Fatal(err)
 		}
 
-		if pkg.Gx.DvcsImport == "" {
-			// nothing to do
-			return
+		dir := filepath.Join(npkg, pkg.Name)
+		mapping := make(map[string]string)
+		err = buildRewriteMapping(&pkg, dir, mapping, false)
+		if err != nil {
+			Fatal(err)
 		}
 
 		hash := filepath.Base(npkg)
-		newimp := "gx/" + hash + "/" + pkg.Name
+		newimp := "gx/ipfs/" + hash + "/" + pkg.Name
+		mapping[pkg.Gx.DvcsImport] = newimp
 
-		err = doUpdate(npkg, pkg.Gx.DvcsImport, newimp)
+		err = doRewrite(&pkg, dir, mapping)
 		if err != nil {
 			Fatal(err)
 		}
 	},
+}
+
+func doRewrite(pkg *Package, cwd string, mapping map[string]string) error {
+	rwm := func(in string) string {
+		m, ok := mapping[in]
+		if ok {
+			return m
+		}
+
+		for k, v := range mapping {
+			if strings.HasPrefix(in, k+"/") {
+				nmapping := strings.Replace(in, k, v, 1)
+				mapping[in] = nmapping
+				return nmapping
+			}
+		}
+
+		mapping[in] = in
+		return in
+	}
+
+	filter := func(s string) bool {
+		return strings.HasSuffix(s, ".go")
+	}
+
+	VLog("  - rewriting imports")
+	err := rw.RewriteImports(cwd, rwm, filter)
+	if err != nil {
+		Fatal(err)
+	}
+	VLog("  - finished!")
+
+	return nil
 }
 
 var postUpdateHookCommand = cli.Command{
@@ -486,7 +498,7 @@ func postImportHook(pkg *Package, npkgHash string) error {
 	if npkg.Gx.DvcsImport != "" {
 		q := fmt.Sprintf("update imports of %s to the newly imported package?", npkg.Gx.DvcsImport)
 		if yesNoPrompt(q, false) {
-			nimp := fmt.Sprintf("gx/%s/%s", npkgHash, npkg.Name)
+			nimp := fmt.Sprintf("gx/ipfs/%s/%s", npkgHash, npkg.Name)
 			err := doUpdate(cwd, npkg.Gx.DvcsImport, nimp)
 			if err != nil {
 				return err
@@ -565,18 +577,26 @@ func versionComp(have, req string) (bool, error) {
 	return false, nil
 }
 
+func globalPath() string {
+	return filepath.Join(os.Getenv("GOPATH"), "src", "gx", "ipfs")
+}
+
 func buildRewriteMapping(pkg *Package, pkgdir string, m map[string]string, undo bool) error {
 	for _, dep := range pkg.Dependencies {
 		var cpkg Package
 		pdir := filepath.Join(pkgdir, dep.Hash)
 		err := gx.FindPackageInDir(&cpkg, pdir)
 		if err != nil {
-			Fatal(err)
+			// try global
+			gerr := gx.FindPackageInDir(&cpkg, filepath.Join(globalPath(), dep.Hash))
+			if gerr != nil {
+				Fatal(err)
+			}
 		}
 
 		if cpkg.Gx.DvcsImport != "" {
 			from := cpkg.Gx.DvcsImport
-			to := dep.Hash + "/" + cpkg.Name
+			to := "gx/ipfs/" + dep.Hash + "/" + cpkg.Name
 			if undo {
 				from, to = to, from
 			}
@@ -595,7 +615,7 @@ func buildRewriteMapping(pkg *Package, pkgdir string, m map[string]string, undo 
 func buildMap(pkg *Package, m map[string]string) error {
 	for _, dep := range pkg.Dependencies {
 		var ch Package
-		err := gx.FindPackageInDir(&ch, filepath.Join("vendor", "gx", dep.Hash))
+		err := gx.FindPackageInDir(&ch, filepath.Join(vendorDir, dep.Hash))
 		if err != nil {
 			return err
 		}
