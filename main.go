@@ -71,7 +71,7 @@ func main() {
 
 	mcwd, err := os.Getwd()
 	if err != nil {
-		Fatal(err)
+		Fatal("failed to get cwd:", err)
 	}
 	cwd = mcwd
 
@@ -400,14 +400,25 @@ var postInstallHookCommand = cli.Command{
 		var pkg Package
 		err := gx.FindPackageInDir(&pkg, npkg)
 		if err != nil {
-			Fatal(err)
+			Fatal("find package failed:", err)
 		}
 
 		dir := filepath.Join(npkg, pkg.Name)
+
+		// build rewrite mapping from parent package if
+		// this call is made on one in the vendor directory
+		var reldir string
+		if strings.Contains(npkg, "vendor/gx/ipfs") {
+			reldir = strings.Split(npkg, "vendor/gx/ipfs")[0]
+			reldir = filepath.Join(reldir, "vendor", "gx", "ipfs")
+		} else {
+			reldir = dir
+		}
+
 		mapping := make(map[string]string)
-		err = buildRewriteMapping(&pkg, dir, mapping, false)
+		err = buildRewriteMapping(&pkg, reldir, mapping, false)
 		if err != nil {
-			Fatal(err)
+			Fatal("building rewrite mapping failed: ", err)
 		}
 
 		hash := filepath.Base(npkg)
@@ -416,7 +427,7 @@ var postInstallHookCommand = cli.Command{
 
 		err = doRewrite(&pkg, dir, mapping)
 		if err != nil {
-			Fatal(err)
+			Fatal("rewrite failed: ", err)
 		}
 	},
 }
@@ -447,7 +458,7 @@ func doRewrite(pkg *Package, cwd string, mapping map[string]string) error {
 	VLog("  - rewriting imports")
 	err := rw.RewriteImports(cwd, rwm, filter)
 	if err != nil {
-		Fatal(err)
+		return err
 	}
 	VLog("  - finished!")
 
@@ -590,7 +601,7 @@ func buildRewriteMapping(pkg *Package, pkgdir string, m map[string]string, undo 
 			// try global
 			gerr := gx.FindPackageInDir(&cpkg, filepath.Join(globalPath(), dep.Hash))
 			if gerr != nil {
-				Fatal(err)
+				return err
 			}
 		}
 
