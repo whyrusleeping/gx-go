@@ -9,8 +9,10 @@ import (
 	"os/exec"
 	"path"
 	"path/filepath"
+	"sort"
 	"strconv"
 	"strings"
+	"text/tabwriter"
 
 	cli "github.com/codegangsta/cli"
 	rw "github.com/whyrusleeping/gx-go/rewrite"
@@ -225,6 +227,10 @@ for each.`,
 				Name:  "undo",
 				Usage: "rewrite import paths back to dvcs",
 			},
+			cli.BoolFlag{
+				Name:  "dry-run",
+				Usage: "print out mapping without touching files",
+			},
 		},
 		Action: func(c *cli.Context) {
 			pkg, err := LoadPackageFile(gx.PkgFileName)
@@ -247,6 +253,11 @@ for each.`,
 			}
 			VLog("  - rewrite mapping complete")
 
+			if c.Bool("dry-run") {
+				tabPrintSortedMap(nil, mapping)
+				return
+			}
+
 			err = doRewrite(pkg, cwd, mapping)
 			if err != nil {
 				Fatal(err)
@@ -260,6 +271,7 @@ for each.`,
 		Subcommands: []cli.Command{
 			postImportCommand,
 			reqCheckCommand,
+			installLocHookCommand,
 			postInitHookCommand,
 			postUpdateHookCommand,
 			postInstallHookCommand,
@@ -465,6 +477,33 @@ func doRewrite(pkg *Package, cwd string, mapping map[string]string) error {
 	return nil
 }
 
+var installLocHookCommand = cli.Command{
+	Name:  "install-path",
+	Usage: "prints out install path",
+	Flags: []cli.Flag{
+		cli.BoolFlag{
+			Name:  "global",
+			Usage: "print global install directory",
+		},
+	},
+	Action: func(c *cli.Context) {
+		if c.Bool("global") {
+			gpath := os.Getenv("GOPATH")
+			if gpath == "" {
+				Fatal("GOPATH not set")
+			}
+			fmt.Println(filepath.Join(gpath, "src"))
+		} else {
+			cwd, err := os.Getwd()
+			if err != nil {
+				Fatal("install-path cwd:", err)
+			}
+
+			fmt.Println(filepath.Join(cwd, "src", "vendor"))
+		}
+	},
+}
+
 var postUpdateHookCommand = cli.Command{
 	Name:  "post-update",
 	Usage: "rewrite go package imports to new versions",
@@ -596,12 +635,15 @@ func buildRewriteMapping(pkg *Package, pkgdir string, m map[string]string, undo 
 	for _, dep := range pkg.Dependencies {
 		var cpkg Package
 		pdir := filepath.Join(pkgdir, dep.Hash)
+		VLog("  - fetching dep: %s (%s)", dep.Name, dep.Hash)
 		err := gx.FindPackageInDir(&cpkg, pdir)
 		if err != nil {
 			// try global
-			gerr := gx.FindPackageInDir(&cpkg, filepath.Join(globalPath(), dep.Hash))
+			p := filepath.Join(globalPath(), dep.Hash)
+			VLog("  - checking in global namespace (%s)", p)
+			gerr := gx.FindPackageInDir(&cpkg, p)
 			if gerr != nil {
-				return err
+				return fmt.Errorf("failed to find package: %s", gerr)
 			}
 		}
 
@@ -660,4 +702,23 @@ func loadMap(i interface{}, file string) error {
 	defer fi.Close()
 
 	return json.NewDecoder(fi).Decode(i)
+}
+
+func tabPrintSortedMap(headers []string, m map[string]string) {
+	var names []string
+	for k, _ := range m {
+		names = append(names, k)
+	}
+
+	sort.Strings(names)
+
+	w := tabwriter.NewWriter(os.Stdout, 12, 4, 1, ' ', 0)
+	if headers != nil {
+		fmt.Fprintf(w, "%s\t%s\n", headers[0], headers[1])
+	}
+
+	for _, n := range names {
+		fmt.Fprintf(w, "%s\t%s\n", n, m[n])
+	}
+	w.Flush()
 }
