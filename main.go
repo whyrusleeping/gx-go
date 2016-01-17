@@ -231,6 +231,10 @@ for each.`,
 				Name:  "dry-run",
 				Usage: "print out mapping without touching files",
 			},
+			cli.StringFlag{
+				Name:  "pkgdir",
+				Usage: "alternative location of the package directory",
+			},
 		},
 		Action: func(c *cli.Context) {
 			pkg, err := LoadPackageFile(gx.PkgFileName)
@@ -238,18 +242,32 @@ for each.`,
 				Fatal(err)
 			}
 
-			dir := filepath.Join(cwd, vendorDir)
-			if c.Args().Present() {
-				dir = c.Args().First()
+			pkgdir := filepath.Join(cwd, vendorDir)
+			if pdopt := c.String("pkgdir"); pdopt != "" {
+				pkgdir = pdopt
 			}
-
-			undo := c.Bool("undo")
 
 			VLog("  - building rewrite mapping")
 			mapping := make(map[string]string)
-			err = buildRewriteMapping(pkg, dir, mapping, undo)
-			if err != nil {
-				Fatal(err)
+			if !c.Args().Present() {
+				err = buildRewriteMapping(pkg, pkgdir, mapping, c.Bool("undo"))
+				if err != nil {
+					Fatal(err)
+				}
+			} else {
+				for _, arg := range c.Args() {
+					dep := pkg.FindDep(arg)
+					if dep == nil {
+						Fatal("%s not found", arg)
+					}
+
+					pkg, err := loadDep(dep, pkgdir)
+					if err != nil {
+						Fatal(err)
+					}
+
+					addRewriteForDep(dep, pkg, mapping, c.Bool("undo"))
+				}
 			}
 			VLog("  - rewrite mapping complete")
 
@@ -631,32 +649,46 @@ func globalPath() string {
 	return filepath.Join(os.Getenv("GOPATH"), "src", "gx", "ipfs")
 }
 
+func loadDep(dep *gx.Dependency, pkgdir string) (*Package, error) {
+	var cpkg Package
+	pdir := filepath.Join(pkgdir, dep.Hash)
+	VLog("  - fetching dep: %s (%s)", dep.Name, dep.Hash)
+	err := gx.FindPackageInDir(&cpkg, pdir)
+	if err != nil {
+		// try global
+		p := filepath.Join(globalPath(), dep.Hash)
+		VLog("  - checking in global namespace (%s)", p)
+		gerr := gx.FindPackageInDir(&cpkg, p)
+		if gerr != nil {
+			return nil, fmt.Errorf("failed to find package: %s", gerr)
+		}
+	}
+
+	return &cpkg, nil
+}
+
+func addRewriteForDep(dep *gx.Dependency, pkg *Package, m map[string]string, undo bool) {
+	if pkg.Gx.DvcsImport != "" {
+		from := pkg.Gx.DvcsImport
+		to := "gx/ipfs/" + dep.Hash + "/" + pkg.Name
+		if undo {
+			from, to = to, from
+		}
+		m[from] = to
+	}
+}
+
 func buildRewriteMapping(pkg *Package, pkgdir string, m map[string]string, undo bool) error {
 	for _, dep := range pkg.Dependencies {
-		var cpkg Package
-		pdir := filepath.Join(pkgdir, dep.Hash)
-		VLog("  - fetching dep: %s (%s)", dep.Name, dep.Hash)
-		err := gx.FindPackageInDir(&cpkg, pdir)
+		cpkg, err := loadDep(dep, pkgdir)
 		if err != nil {
-			// try global
-			p := filepath.Join(globalPath(), dep.Hash)
-			VLog("  - checking in global namespace (%s)", p)
-			gerr := gx.FindPackageInDir(&cpkg, p)
-			if gerr != nil {
-				return fmt.Errorf("failed to find package: %s", gerr)
-			}
+			return err
 		}
 
-		if cpkg.Gx.DvcsImport != "" {
-			from := cpkg.Gx.DvcsImport
-			to := "gx/ipfs/" + dep.Hash + "/" + cpkg.Name
-			if undo {
-				from, to = to, from
-			}
-			m[from] = to
-		}
+		addRewriteForDep(dep, cpkg, m, undo)
 
-		err = buildRewriteMapping(&cpkg, pkgdir, m, undo)
+		// recurse!
+		err = buildRewriteMapping(cpkg, pkgdir, m, undo)
 		if err != nil {
 			return err
 		}
