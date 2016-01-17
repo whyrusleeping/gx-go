@@ -1,0 +1,2 @@
+- 'working set' command to copy deps from global root to somewhere local (`vendor` dir)
+  - this way we can easily hack on our deps without disturbing any other packages
