@@ -529,8 +529,8 @@ var postUpdateHookCommand = cli.Command{
 		if len(c.Args()) < 2 {
 			Fatal("must specify two arguments")
 		}
-		before := c.Args()[0]
-		after := c.Args()[1]
+		before := "gx/ipfs/" + c.Args()[0]
+		after := "gx/ipfs/" + c.Args()[1]
 		err := doUpdate(cwd, before, after)
 		if err != nil {
 			Fatal(err)
