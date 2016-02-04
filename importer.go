@@ -116,7 +116,7 @@ func (i *Importer) GxPublishGoPackage(imppath string) (*gx.Dependency, error) {
 	}
 
 	if hash, ok := i.preMap[imppath]; ok {
-		pkg, err := i.pm.GetPackage(hash)
+		pkg, err := i.pm.GetPackageTo(hash, filepath.Join(vendorDir, hash))
 		if err != nil {
 			return nil, err
 		}
