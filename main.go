@@ -252,7 +252,7 @@ for each.`,
 			if !c.Args().Present() {
 				err = buildRewriteMapping(pkg, pkgdir, mapping, c.Bool("undo"))
 				if err != nil {
-					Fatal(err)
+					Fatal("build of rewrite mapping failed:\n", err)
 				}
 			} else {
 				for _, arg := range c.Args() {
@@ -555,10 +555,8 @@ func packagesGoImport(p string) (string, error) {
 }
 
 func postImportHook(pkg *Package, npkgHash string) error {
-	npkgPath := filepath.Join(vendorDir, npkgHash)
-
 	var npkg Package
-	err := gx.FindPackageInDir(&npkg, npkgPath)
+	err := gx.LoadPackage(&npkg, "go", npkgHash)
 	if err != nil {
 		return err
 	}
@@ -682,7 +680,7 @@ func buildRewriteMapping(pkg *Package, pkgdir string, m map[string]string, undo 
 	for _, dep := range pkg.Dependencies {
 		cpkg, err := loadDep(dep, pkgdir)
 		if err != nil {
-			return err
+			return fmt.Errorf("loading dep %q of %q: %s", dep.Name, pkg.Name, err)
 		}
 
 		addRewriteForDep(dep, cpkg, m, undo)
