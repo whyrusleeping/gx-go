@@ -9,7 +9,6 @@ import (
 	"os/exec"
 	"path"
 	"path/filepath"
-	"runtime/pprof"
 	"sort"
 	"strconv"
 	"strings"
@@ -56,9 +55,6 @@ func LoadPackageFile(name string) (*Package, error) {
 }
 
 func main() {
-	fi, _ := os.Create("gx-go.profile")
-	pprof.StartCPUProfile(fi)
-	defer pprof.StopCPUProfile()
 	app := cli.NewApp()
 	app.Name = "gx-go"
 	app.Author = "whyrusleeping"
