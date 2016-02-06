@@ -78,31 +78,22 @@ func rewriteImportsInFile(fi string, rw func(string) string) error {
 		}
 	}
 
-	var buffer bytes.Buffer
-	if err = cfg.Fprint(&buffer, fset, file); err != nil {
-		return err
-	}
-
-	pathCh, err := fixCanonicalImports(buffer.Bytes())
-	if err != nil {
-		return err
-	}
-
-	if !(changed || pathCh) {
+	if !changed {
 		return nil
 	}
 
-	fset = token.NewFileSet()
-	file, err = parser.ParseFile(fset, fi, &buffer, parser.ParseComments)
 	ast.SortImports(fset, file)
+
 	wpath := fi + ".temp"
 	w, err := os.Create(wpath)
 	if err != nil {
 		return err
 	}
+
 	if err = cfg.Fprint(w, fset, file); err != nil {
 		return err
 	}
+
 	if err = w.Close(); err != nil {
 		return err
 	}
