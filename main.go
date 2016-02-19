@@ -760,5 +760,5 @@ func getGoPath() (string, error) {
 		return "", fmt.Errorf("GOPATH not set")
 	}
 
-	return strings.Split(gp, ":")[0], nil
+	return filepath.SplitList(gp)[0], nil
 }
