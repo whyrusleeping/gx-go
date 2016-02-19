@@ -202,8 +202,8 @@ for each.`,
 		Name:  "path",
 		Usage: "prints the import path of the current package within GOPATH",
 		Action: func(c *cli.Context) {
-			gopath := os.Getenv("GOPATH")
-			if gopath == "" {
+			gopath, err := getGoPath()
+			if err != nil {
 				Fatal("GOPATH not set, cannot derive import path")
 			}
 
@@ -506,8 +506,8 @@ var installLocHookCommand = cli.Command{
 	},
 	Action: func(c *cli.Context) {
 		if c.Bool("global") {
-			gpath := os.Getenv("GOPATH")
-			if gpath == "" {
+			gpath, err := getGoPath()
+			if err != nil {
 				Fatal("GOPATH not set")
 			}
 			fmt.Println(filepath.Join(gpath, "src"))
@@ -539,9 +539,9 @@ var postUpdateHookCommand = cli.Command{
 }
 
 func packagesGoImport(p string) (string, error) {
-	gopath := os.Getenv("GOPATH")
-	if gopath == "" {
-		return "", fmt.Errorf("GOPATH not set, cannot derive import path")
+	gopath, err := getGoPath()
+	if err != nil {
+		return "", err
 	}
 
 	srcdir := path.Join(gopath, "src")
@@ -644,7 +644,8 @@ func versionComp(have, req string) (bool, error) {
 }
 
 func globalPath() string {
-	return filepath.Join(os.Getenv("GOPATH"), "src", "gx", "ipfs")
+	gp, _ := getGoPath()
+	return filepath.Join(gp, "src", "gx", "ipfs")
 }
 
 func loadDep(dep *gx.Dependency, pkgdir string) (*Package, error) {
@@ -751,4 +752,13 @@ func tabPrintSortedMap(headers []string, m map[string]string) {
 		fmt.Fprintf(w, "%s\t%s\n", n, m[n])
 	}
 	w.Flush()
+}
+
+func getGoPath() (string, error) {
+	gp := os.Getenv("GOPATH")
+	if gp == "" {
+		return "", fmt.Errorf("GOPATH not set")
+	}
+
+	return strings.Split(gp, ":")[0], nil
 }

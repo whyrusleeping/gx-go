@@ -1,7 +1,6 @@
 package main
 
 import (
-	"errors"
 	"fmt"
 	"go/build"
 	"io/ioutil"
@@ -82,14 +81,6 @@ func NewImporter(rw bool, gopath string, premap map[string]string) (*Importer, e
 		preMap:  premap,
 		bctx:    bctx,
 	}, nil
-}
-
-func getGoPath() (string, error) {
-	gopath := os.Getenv("GOPATH")
-	if gopath == "" {
-		return "", errors.New("gopath not set")
-	}
-	return gopath, nil
 }
 
 // this function is an attempt to keep subdirectories of a package as part of
