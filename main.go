@@ -375,9 +375,9 @@ var reqCheckCommand = cli.Command{
 		if !c.Args().Present() {
 			Fatal("no package specified")
 		}
-		dephash := c.Args().First()
+		pkgpath := c.Args().First()
 
-		err := reqCheckHook(dephash)
+		err := reqCheckHook(pkgpath)
 		if err != nil {
 			Fatal(err)
 		}
@@ -575,11 +575,10 @@ func postImportHook(pkg *Package, npkgHash string) error {
 	return nil
 }
 
-func reqCheckHook(pkghash string) error {
-	p := filepath.Join(vendorDir, pkghash)
-
+func reqCheckHook(pkgpath string) error {
 	var npkg Package
-	err := gx.FindPackageInDir(&npkg, p)
+	pkgfile := filepath.Join(pkgpath, gx.PkgFileName)
+	err := gx.LoadPackageFile(&npkg, pkgfile)
 	if err != nil {
 		return err
 	}
@@ -604,7 +603,7 @@ func reqCheckHook(pkghash string) error {
 			return err
 		}
 		if badreq {
-			return fmt.Errorf("package '%s' requires go version %s, you have %s installed.", npkg.Name, reqvers, havevers)
+			return fmt.Errorf("package '%s' requires at least go version %s, you have %s installed.", npkg.Name, reqvers, havevers)
 		}
 
 	}
