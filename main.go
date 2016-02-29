@@ -517,7 +517,7 @@ var installLocHookCommand = cli.Command{
 				Fatal("install-path cwd:", err)
 			}
 
-			fmt.Println(filepath.Join(cwd, "src", "vendor"))
+			fmt.Println(filepath.Join(cwd, "vendor"))
 		}
 	},
 }
