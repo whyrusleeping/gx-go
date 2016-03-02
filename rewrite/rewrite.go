@@ -5,12 +5,10 @@ import (
 	"bytes"
 	"fmt"
 	"go/ast"
-	"go/build"
 	"go/parser"
 	"go/printer"
 	"go/token"
 	"os"
-	"path/filepath"
 	"regexp"
 	"strconv"
 	"strings"
@@ -32,23 +30,17 @@ func RewriteImports(path string, rw func(string) string, filter func(string) boo
 			continue
 		}
 
+		if !strings.HasSuffix(w.Path(), ".go") {
+			continue
+		}
+
 		if !filter(rel) {
 			continue
 		}
 
-		dir, fi := filepath.Split(w.Path())
-		good, err := build.Default.MatchFile(dir, fi)
-		if err != nil {
-			return err
-		}
-		if !good {
-			continue
-		}
-
-		err = rewriteImportsInFile(w.Path(), rw)
+		err := rewriteImportsInFile(w.Path(), rw)
 		if err != nil {
 			fmt.Println("rewrite error: ", err)
-			return err
 		}
 	}
 	return nil
