@@ -12,9 +12,20 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"sync"
 
 	fs "github.com/kr/fs"
 )
+
+var bufpool *sync.Pool
+
+func init() {
+	bufpool = &sync.Pool{
+		New: func() interface{} {
+			return new(bytes.Buffer)
+		},
+	}
+}
 
 func RewriteImports(path string, rw func(string) string, filter func(string) bool) error {
 	w := fs.Walk(path)
@@ -73,6 +84,20 @@ func rewriteImportsInFile(fi string, rw func(string) string) error {
 	if !changed {
 		return nil
 	}
+
+	buf := bufpool.Get().(*bytes.Buffer)
+	if err = cfg.Fprint(buf, fset, file); err != nil {
+		return err
+	}
+
+	fset = token.NewFileSet()
+	file, err = parser.ParseFile(fset, fi, buf, parser.ParseComments)
+	if err != nil {
+		return err
+	}
+
+	buf.Reset()
+	bufpool.Put(buf)
 
 	ast.SortImports(fset, file)
 
