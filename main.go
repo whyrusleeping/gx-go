@@ -418,47 +418,47 @@ var postInstallHookCommand = cli.Command{
 	Name:  "post-install",
 	Usage: "post install hook for newly installed go packages",
 	Action: func(c *cli.Context) {
-		if !c.Args().Present() {
-			Fatal("must specify path to newly installed package")
-		}
-		npkg := c.Args().First()
-		// update sub-package refs here
-		// ex:
-		// if this package is 'github.com/X/Y' replace all imports
-		// matching 'github.com/X/Y*' with 'gx/<hash>/name*'
-
-		var pkg Package
-		err := gx.FindPackageInDir(&pkg, npkg)
-		if err != nil {
-			Fatal("find package failed:", err)
-		}
-
-		dir := filepath.Join(npkg, pkg.Name)
-
-		// build rewrite mapping from parent package if
-		// this call is made on one in the vendor directory
-		var reldir string
-		if strings.Contains(npkg, "vendor/gx/ipfs") {
-			reldir = strings.Split(npkg, "vendor/gx/ipfs")[0]
-			reldir = filepath.Join(reldir, "vendor", "gx", "ipfs")
-		} else {
-			reldir = dir
-		}
-
-		mapping := make(map[string]string)
-		err = buildRewriteMapping(&pkg, reldir, mapping, false)
-		if err != nil {
-			Fatal("building rewrite mapping failed: ", err)
-		}
-
-		hash := filepath.Base(npkg)
-		newimp := "gx/ipfs/" + hash + "/" + pkg.Name
-		mapping[pkg.Gx.DvcsImport] = newimp
-
-		err = doRewrite(&pkg, dir, mapping)
-		if err != nil {
-			Fatal("rewrite failed: ", err)
-		}
+// 		if !c.Args().Present() {
+// 			Fatal("must specify path to newly installed package")
+// 		}
+// 		npkg := c.Args().First()
+// 		// update sub-package refs here
+// 		// ex:
+// 		// if this package is 'github.com/X/Y' replace all imports
+// 		// matching 'github.com/X/Y*' with 'gx/<hash>/name*'
+//
+// 		var pkg Package
+// 		err := gx.FindPackageInDir(&pkg, npkg)
+// 		if err != nil {
+// 			Fatal("find package failed:", err)
+// 		}
+//
+// 		dir := filepath.Join(npkg, pkg.Name)
+//
+// 		// build rewrite mapping from parent package if
+// 		// this call is made on one in the vendor directory
+// 		var reldir string
+// 		if strings.Contains(npkg, "vendor/gx/ipfs") {
+// 			reldir = strings.Split(npkg, "vendor/gx/ipfs")[0]
+// 			reldir = filepath.Join(reldir, "vendor", "gx", "ipfs")
+// 		} else {
+// 			reldir = dir
+// 		}
+//
+// 		mapping := make(map[string]string)
+// 		err = buildRewriteMapping(&pkg, reldir, mapping, false)
+// 		if err != nil {
+// 			Fatal("building rewrite mapping failed: ", err)
+// 		}
+//
+// 		hash := filepath.Base(npkg)
+// 		newimp := "gx/ipfs/" + hash + "/" + pkg.Name
+// 		mapping[pkg.Gx.DvcsImport] = newimp
+//
+// 		err = doRewrite(&pkg, dir, mapping)
+// 		if err != nil {
+// 			Fatal("rewrite failed: ", err)
+// 		}
 	},
 }
 
