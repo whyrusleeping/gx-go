@@ -36,7 +36,7 @@ very simple process.
 ### Creating a new package
 In the directory of your javascript package, just run:
 ```
-gx init --lang=go
+gx init --lang=js
 ```
 
 And gx will create a new `package.json` for you with some basic information
