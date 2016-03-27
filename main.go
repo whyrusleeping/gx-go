@@ -1,6 +1,7 @@
 package main
 
 import (
+	"log"
 	"bufio"
 	"encoding/json"
 	"fmt"
@@ -506,18 +507,18 @@ var installLocHookCommand = cli.Command{
 	},
 	Action: func(c *cli.Context) {
 		if c.Bool("global") {
-			gpath, err := getGoPath()
+			gpath, err := getGlobalNodeModulesPath()
 			if err != nil {
 				Fatal("GOPATH not set")
 			}
-			fmt.Println(filepath.Join(gpath, "src"))
+			fmt.Println(filepath.Join(gpath, "lib", "node_modules"))
 		} else {
 			cwd, err := os.Getwd()
 			if err != nil {
 				Fatal("install-path cwd:", err)
 			}
 
-			fmt.Println(filepath.Join(cwd, "vendor"))
+			fmt.Println(filepath.Join(cwd, "node_modules"))
 		}
 	},
 }
@@ -760,4 +761,23 @@ func getGoPath() (string, error) {
 	}
 
 	return filepath.SplitList(gp)[0], nil
+}
+func getNodePath() (string, error) {
+	np, err := exec.Command("which", "node").Output()
+	s := string(np[:])
+	if s == "" {
+		return "", fmt.Errorf("node binary not found")
+	}
+
+	return s, err
+}
+
+func getGlobalNodeModulesPath () (string, error) {
+	nm, err := getNodePath()
+	if err != nil {
+		log.Fatal(err)
+	}
+	s := strings.Replace(nm, "bin/node", "", 1)
+	t := strings.TrimSpace(s)
+	return t, err
 }
