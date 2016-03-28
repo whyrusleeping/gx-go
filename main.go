@@ -50,6 +50,11 @@ func LoadPackageFile(name string) (*Package, error) {
 	if err != nil {
 		return nil, err
 	}
+	file, err := ioutil.ReadFile(name)
+	if err != nil {
+		return nil, err
+	}
+	json.Unmarshal(file, &pkg.NonGxFields)
 
 	return &pkg, nil
 }
@@ -407,7 +412,7 @@ var postInitHookCommand = cli.Command{
 			pkg.Gx.DvcsImport = imp
 		}
 
-		err = gx.SavePackageFile(pkg, pkgpath)
+		err = gx.SavePackageFile(pkg, pkgpath, pkg.NonGxFields)
 		if err != nil {
 			Fatal(err)
 		}

@@ -183,7 +183,7 @@ func (i *Importer) GxPublishGoPackage(imppath string) (*gx.Dependency, error) {
 		pkg.Dependencies = append(pkg.Dependencies, childdep)
 	}
 
-	err = gx.SavePackageFile(pkg, pkgFilePath)
+	err = gx.SavePackageFile(pkg, pkgFilePath, pkg.NonGxFields)
 	if err != nil {
 		return nil, err
 	}
