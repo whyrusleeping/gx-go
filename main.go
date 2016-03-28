@@ -50,6 +50,11 @@ func LoadPackageFile(name string) (*Package, error) {
 	if err != nil {
 		return nil, err
 	}
+	file, err := ioutil.ReadFile(name)
+	if err != nil {
+		return nil, err
+	}
+	json.Unmarshal(file, &pkg.NonGxFields)
 
 	return &pkg, nil
 }
@@ -407,7 +412,7 @@ var postInitHookCommand = cli.Command{
 			pkg.Gx.DvcsImport = imp
 		}
 
-		err = gx.SavePackageFile(pkg, pkgpath)
+		err = gx.SavePackageFile(pkg, pkgpath, pkg.NonGxFields)
 		if err != nil {
 			Fatal(err)
 		}
@@ -418,47 +423,47 @@ var postInstallHookCommand = cli.Command{
 	Name:  "post-install",
 	Usage: "post install hook for newly installed go packages",
 	Action: func(c *cli.Context) {
-		if !c.Args().Present() {
-			Fatal("must specify path to newly installed package")
-		}
-		npkg := c.Args().First()
-		// update sub-package refs here
-		// ex:
-		// if this package is 'github.com/X/Y' replace all imports
-		// matching 'github.com/X/Y*' with 'gx/<hash>/name*'
-
-		var pkg Package
-		err := gx.FindPackageInDir(&pkg, npkg)
-		if err != nil {
-			Fatal("find package failed:", err)
-		}
-
-		dir := filepath.Join(npkg, pkg.Name)
-
-		// build rewrite mapping from parent package if
-		// this call is made on one in the vendor directory
-		var reldir string
-		if strings.Contains(npkg, "vendor/gx/ipfs") {
-			reldir = strings.Split(npkg, "vendor/gx/ipfs")[0]
-			reldir = filepath.Join(reldir, "vendor", "gx", "ipfs")
-		} else {
-			reldir = dir
-		}
-
-		mapping := make(map[string]string)
-		err = buildRewriteMapping(&pkg, reldir, mapping, false)
-		if err != nil {
-			Fatal("building rewrite mapping failed: ", err)
-		}
-
-		hash := filepath.Base(npkg)
-		newimp := "gx/ipfs/" + hash + "/" + pkg.Name
-		mapping[pkg.Gx.DvcsImport] = newimp
-
-		err = doRewrite(&pkg, dir, mapping)
-		if err != nil {
-			Fatal("rewrite failed: ", err)
-		}
+// 		if !c.Args().Present() {
+// 			Fatal("must specify path to newly installed package")
+// 		}
+// 		npkg := c.Args().First()
+// 		// update sub-package refs here
+// 		// ex:
+// 		// if this package is 'github.com/X/Y' replace all imports
+// 		// matching 'github.com/X/Y*' with 'gx/<hash>/name*'
+//
+// 		var pkg Package
+// 		err := gx.FindPackageInDir(&pkg, npkg)
+// 		if err != nil {
+// 			Fatal("find package failed:", err)
+// 		}
+//
+// 		dir := filepath.Join(npkg, pkg.Name)
+//
+// 		// build rewrite mapping from parent package if
+// 		// this call is made on one in the vendor directory
+// 		var reldir string
+// 		if strings.Contains(npkg, "vendor/gx/ipfs") {
+// 			reldir = strings.Split(npkg, "vendor/gx/ipfs")[0]
+// 			reldir = filepath.Join(reldir, "vendor", "gx", "ipfs")
+// 		} else {
+// 			reldir = dir
+// 		}
+//
+// 		mapping := make(map[string]string)
+// 		err = buildRewriteMapping(&pkg, reldir, mapping, false)
+// 		if err != nil {
+// 			Fatal("building rewrite mapping failed: ", err)
+// 		}
+//
+// 		hash := filepath.Base(npkg)
+// 		newimp := "gx/ipfs/" + hash + "/" + pkg.Name
+// 		mapping[pkg.Gx.DvcsImport] = newimp
+//
+// 		err = doRewrite(&pkg, dir, mapping)
+// 		if err != nil {
+// 			Fatal("rewrite failed: ", err)
+// 		}
 	},
 }
 
@@ -506,18 +511,18 @@ var installLocHookCommand = cli.Command{
 	},
 	Action: func(c *cli.Context) {
 		if c.Bool("global") {
-			gpath, err := getGoPath()
+			gpath, err := getNodePath()
 			if err != nil {
 				Fatal("GOPATH not set")
 			}
-			fmt.Println(filepath.Join(gpath, "src"))
+			fmt.Println(filepath.Join(filepath.Dir(gpath), "..", "lib", "node_modules"))
 		} else {
 			cwd, err := os.Getwd()
 			if err != nil {
 				Fatal("install-path cwd:", err)
 			}
 
-			fmt.Println(filepath.Join(cwd, "vendor"))
+			fmt.Println(filepath.Join(cwd, "node_modules"))
 		}
 	},
 }
@@ -760,4 +765,13 @@ func getGoPath() (string, error) {
 	}
 
 	return filepath.SplitList(gp)[0], nil
+}
+func getNodePath() (string, error) {
+	np, err := exec.Command("which", "node").Output()
+	s := strings.TrimSpace(string(np[:]))
+	if s == "" {
+		return s, fmt.Errorf("node binary not found")
+	}
+
+	return s, err
 }
