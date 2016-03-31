@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"go/build"
+	"go/scanner"
 	"io/ioutil"
 	"os"
 	"os/exec"
@@ -125,6 +126,7 @@ func (i *Importer) GxPublishGoPackage(imppath string) (*gx.Dependency, error) {
 	err := i.GoGet(imppath)
 	if err != nil {
 		if !strings.Contains(err.Error(), "no buildable Go source files") {
+			Error("go get %s failed: %s", imppath, err)
 			return nil, err
 		}
 	}
@@ -167,7 +169,7 @@ func (i *Importer) GxPublishGoPackage(imppath string) (*gx.Dependency, error) {
 	// recurse!
 	depsToVendor, err := i.depsToVendorForPackage(imppath)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("error fetching deps for %s: %s", imppath, err)
 	}
 
 	for n, child := range depsToVendor {
@@ -195,7 +197,7 @@ func (i *Importer) GxPublishGoPackage(imppath string) (*gx.Dependency, error) {
 
 	err = i.rewriteImports(fullpkgpath)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("rewriting imports failed: %s", err)
 	}
 
 	err = writeGxIgnore(pkgpath, []string{"Godeps/*"})
@@ -224,11 +226,19 @@ func (i *Importer) depsToVendorForPackage(path string) ([]string, error) {
 
 	gopkg, err := i.bctx.Import(path, "", 0)
 	if err != nil {
-		_, ok := err.(*build.NoGoError)
-		if !ok {
+		switch err := err.(type) {
+		case *build.NoGoError:
+			// if theres no go code here, there still might be some in lower directories
+		case scanner.ErrorList:
+			Error("failed to scan file: %s", err)
+			// continue anyway
+		case *build.MultiplePackageError:
+			Error("multiple package error: %s", err)
+		default:
+			Error("ERROR OF TYPE: %#v", err)
 			return nil, err
 		}
-		// if theres no go code here, there still might be some in lower directories
+
 	} else {
 		imps := append(gopkg.Imports, gopkg.TestImports...)
 		// if the package existed and has go code in it

@@ -417,6 +417,12 @@ var postInitHookCommand = cli.Command{
 var postInstallHookCommand = cli.Command{
 	Name:  "post-install",
 	Usage: "post install hook for newly installed go packages",
+	Flags: []cli.Flag{
+		cli.BoolFlag{
+			Name:  "global",
+			Usage: "specifies whether or not the install was global",
+		},
+	},
 	Action: func(c *cli.Context) {
 		if !c.Args().Present() {
 			Fatal("must specify path to newly installed package")
