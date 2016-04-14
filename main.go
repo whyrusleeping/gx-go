@@ -9,6 +9,7 @@ import (
 	"os/exec"
 	"path"
 	"path/filepath"
+	"runtime"
 	"sort"
 	"strconv"
 	"strings"
@@ -59,7 +60,7 @@ func main() {
 	app.Name = "gx-go"
 	app.Author = "whyrusleeping"
 	app.Usage = "gx extensions for golang"
-	app.Version = "0.3.0"
+	app.Version = "0.6.0"
 	app.Flags = []cli.Flag{
 		cli.BoolFlag{
 			Name:  "verbose",
@@ -612,6 +613,19 @@ func reqCheckHook(pkgpath string) error {
 			return fmt.Errorf("package '%s' requires at least go version %s, you have %s installed.", npkg.Name, reqvers, havevers)
 		}
 
+		gxgocompvers := runtime.Version()
+		if strings.HasPrefix(gxgocompvers, "go") {
+			badreq, err := versionComp(gxgocompvers[2:], reqvers)
+			if err != nil {
+				return err
+			}
+			if badreq {
+				return fmt.Errorf("package '%s' requires at least go version %s.\nhowever, your gx-go binary was compiled with %s.\nPlease update gx-go (or recompile with your current go compiler)", npkg.Name, reqvers, gxgocompvers)
+			}
+		} else {
+			Log("gx-go was compiled with an unrecognized version of go. (%s)", gxgocompvers)
+			Log("If you encounter any strange issues during its usage, try rebuilding gx-go with go %s or higher", reqvers)
+		}
 	}
 	return nil
 }
