@@ -657,6 +657,8 @@ func versionComp(have, req string) (bool, error) {
 
 		if hv < rv {
 			return true, nil
+		} else if hv > rv {
+			return false, nil
 		}
 	}
 	return false, nil
