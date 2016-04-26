@@ -199,27 +199,6 @@ for each.`,
 		},
 	}
 
-	var PathCommand = cli.Command{
-		Name:  "path",
-		Usage: "prints the import path of the current package within GOPATH",
-		Action: func(c *cli.Context) {
-			gopath, err := getGoPath()
-			if err != nil {
-				Fatal("GOPATH not set, cannot derive import path")
-			}
-
-			srcdir := path.Join(gopath, "src")
-			srcdir += "/"
-
-			if !strings.HasPrefix(cwd, srcdir) {
-				Fatal("package not within GOPATH/src")
-			}
-
-			rel := cwd[len(srcdir):]
-			fmt.Println(rel)
-		},
-	}
-
 	var RewriteCommand = cli.Command{
 		Name:  "rewrite",
 		Usage: "temporary hack to evade causality",
@@ -284,6 +263,31 @@ for each.`,
 		},
 	}
 
+	var DvcsDepsCommand = cli.Command{
+		Name:  "dvcs-deps",
+		Usage: "display dvcs deps that arent tracked in gx",
+		Action: func(c *cli.Context) {
+			i, err := NewImporter(false, os.Getenv("GOPATH"), nil)
+			if err != nil {
+				Fatal(err)
+			}
+
+			relp, err := getImportPath(cwd)
+			if err != nil {
+				Fatal(err)
+			}
+
+			deps, err := i.DepsToVendorForPackage(relp)
+			if err != nil {
+				Fatal(err)
+			}
+
+			for _, d := range deps {
+				fmt.Println(d)
+			}
+		},
+	}
+
 	var HookCommand = cli.Command{
 		Name:  "hook",
 		Usage: "go specific hooks to be called by the gx tool",
@@ -305,9 +309,40 @@ for each.`,
 		PathCommand,
 		RewriteCommand,
 		UpdateCommand,
+		DvcsDepsCommand,
 	}
 
 	app.Run(os.Args)
+}
+
+func getImportPath(pkgpath string) (string, error) {
+	gopath, err := getGoPath()
+	if err != nil {
+		return "", fmt.Errorf("GOPATH not set, cannot derive import path")
+	}
+
+	srcdir := path.Join(gopath, "src")
+	srcdir += "/"
+
+	if !strings.HasPrefix(cwd, srcdir) {
+		return "", fmt.Errorf("package not within GOPATH/src")
+	}
+
+	rel := cwd[len(srcdir):]
+	return rel, nil
+}
+
+var PathCommand = cli.Command{
+	Name:  "path",
+	Usage: "prints the import path of the current package within GOPATH",
+	Action: func(c *cli.Context) {
+		rel, err := getImportPath(cwd)
+		if err != nil {
+			Fatal(err)
+		}
+
+		fmt.Println(rel)
+	},
 }
 
 func prompt(text, def string) (string, error) {

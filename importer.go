@@ -167,7 +167,7 @@ func (i *Importer) GxPublishGoPackage(imppath string) (*gx.Dependency, error) {
 	pkg.Dependencies = nil
 
 	// recurse!
-	depsToVendor, err := i.depsToVendorForPackage(imppath)
+	depsToVendor, err := i.DepsToVendorForPackage(imppath)
 	if err != nil {
 		return nil, fmt.Errorf("error fetching deps for %s: %s", imppath, err)
 	}
@@ -221,7 +221,7 @@ func (i *Importer) GxPublishGoPackage(imppath string) (*gx.Dependency, error) {
 	return dep, nil
 }
 
-func (i *Importer) depsToVendorForPackage(path string) ([]string, error) {
+func (i *Importer) DepsToVendorForPackage(path string) ([]string, error) {
 	rdeps := make(map[string]struct{})
 
 	gopkg, err := i.bctx.Import(path, "", 0)
@@ -265,7 +265,7 @@ func (i *Importer) depsToVendorForPackage(path string) ([]string, error) {
 			continue
 		}
 
-		out, err := i.depsToVendorForPackage(filepath.Join(path, e.Name()))
+		out, err := i.DepsToVendorForPackage(filepath.Join(path, e.Name()))
 		if err != nil {
 			return nil, err
 		}
