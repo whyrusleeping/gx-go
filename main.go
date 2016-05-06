@@ -88,7 +88,9 @@ func main() {
 		DvcsDepsCommand,
 	}
 
-	app.Run(os.Args)
+	if err := app.Run(os.Args); err != nil {
+		Fatal(err)
+	}
 }
 
 var DepMapCommand = cli.Command{
