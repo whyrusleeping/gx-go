@@ -76,7 +76,11 @@ func main() {
 	if err != nil {
 		Fatal("failed to get cwd:", err)
 	}
-	cwd = mcwd
+	lcwd, err := filepath.EvalSymlinks(mcwd)
+	if err != nil {
+		Fatal("failed to resolve symlinks of cdw:", err)
+	}
+	cwd = lcwd
 
 	app.Commands = []cli.Command{
 		DepMapCommand,
