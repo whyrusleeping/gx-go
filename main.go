@@ -321,6 +321,7 @@ var DvcsDepsCommand = cli.Command{
 			return err
 		}
 
+		sort.Strings(deps)
 		for _, d := range deps {
 			fmt.Println(d)
 		}
