@@ -662,6 +662,10 @@ func reqCheckHook(pkgpath string) error {
 		if len(parts) < 4 {
 			return fmt.Errorf("unrecognized output from go compiler")
 		}
+		if parts[2] == "devel" {
+			Log("warning: using unknown development version of go, proceed with caution")
+			return nil
+		}
 
 		havevers := parts[2][2:]
 
@@ -676,6 +680,9 @@ func reqCheckHook(pkgpath string) error {
 		}
 
 		gxgocompvers := runtime.Version()
+		if strings.HasPrefix(gxgocompvers, "devel") {
+			return nil
+		}
 		if strings.HasPrefix(gxgocompvers, "go") {
 			badreq, err := versionComp(gxgocompvers[2:], reqvers)
 			if err != nil {
