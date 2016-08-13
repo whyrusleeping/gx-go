@@ -711,9 +711,12 @@ func versionComp(have, req string) (bool, error) {
 	hp := strings.Split(have, ".")
 	rp := strings.Split(req, ".")
 
-	// treat X.YrcZ as simply X.Y
-	if strings.Contains(hp[len(hp)-1], "rc") {
-		hp[len(hp)-1] = strings.Split(hp[len(hp)-1], "rc")[0]
+	// treat X.YrcZ or X.YbetaZ as simply X.Y
+	for _, s := range []string{"rc", "beta"} {
+		if strings.Contains(hp[len(hp)-1], s) {
+			hp[len(hp)-1] = strings.Split(hp[len(hp)-1], s)[0]
+			break
+		}
 	}
 
 	l := min(len(hp), len(rp))
