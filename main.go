@@ -781,7 +781,8 @@ func buildRewriteMapping(pkg *Package, pkgdir string, m map[string]string, undo 
 	for _, dep := range pkg.Dependencies {
 		cpkg, err := loadDep(dep, pkgdir)
 		if err != nil {
-			return fmt.Errorf("loading dep %q of %q: %s", dep.Name, pkg.Name, err)
+			VLog("error loading dep %q of %q: %s", dep.Name, pkg.Name, err)
+			return fmt.Errorf("package %q not found. (dependency of %s)", dep.Name, pkg.Name)
 		}
 
 		addRewriteForDep(dep, cpkg, m, undo)
