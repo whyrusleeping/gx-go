@@ -237,8 +237,9 @@ var UpdateCommand = cli.Command{
 }
 
 var RewriteCommand = cli.Command{
-	Name:  "rewrite",
-	Usage: "temporary hack to evade causality",
+	Name:      "rewrite",
+	Usage:     "temporary hack to evade causality",
+	ArgsUsage: "[optional package name]",
 	Flags: []cli.Flag{
 		cli.BoolFlag{
 			Name:  "undo",
