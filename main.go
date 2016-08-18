@@ -90,6 +90,9 @@ func main() {
 		RewriteCommand,
 		UpdateCommand,
 		DvcsDepsCommand,
+
+		// Go tool compat:
+		GetCommand,
 	}
 
 	if err := app.Run(os.Args); err != nil {
@@ -358,6 +361,58 @@ var PathCommand = cli.Command{
 		}
 
 		fmt.Println(rel)
+		return nil
+	},
+}
+
+func goGetPackage(path string) error {
+	cmd := exec.Command("go", "get", "-d", path)
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	cmd.Run()
+	return nil
+}
+
+var GetCommand = cli.Command{
+	Name:  "get",
+	Usage: "gx-ified `go get`",
+	Action: func(c *cli.Context) error {
+		pkgpath := c.Args().First()
+		if err := goGetPackage(pkgpath); err != nil {
+			return err
+		}
+
+		gpath, err := getGoPath()
+		if err != nil {
+			return err
+		}
+
+		pkgdir := filepath.Join(gpath, "src", pkgpath)
+
+		cmd := exec.Command("gx", "install")
+		cmd.Dir = pkgdir
+		cmd.Stdout = os.Stdout
+		cmd.Stderr = os.Stderr
+
+		if err := cmd.Run(); err != nil {
+			return err
+		}
+
+		var pkg Package
+		if err := gx.LoadPackageFile(&pkg, filepath.Join(pkgdir, "package.json")); err != nil {
+			return err
+		}
+
+		depsdir := filepath.Join(pkgdir, vendorDir)
+		rwmapping := make(map[string]string)
+		if err := buildRewriteMapping(&pkg, depsdir, rwmapping, false); err != nil {
+			return err
+		}
+
+		if err := doRewrite(&pkg, pkgdir, rwmapping); err != nil {
+			return err
+		}
+
 		return nil
 	},
 }
