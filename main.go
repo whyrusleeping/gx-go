@@ -258,12 +258,17 @@ var RewriteCommand = cli.Command{
 		},
 	},
 	Action: func(c *cli.Context) error {
-		pkg, err := LoadPackageFile(gx.PkgFileName)
+		root, err := gx.GetPackageRoot()
 		if err != nil {
 			return err
 		}
 
-		pkgdir := filepath.Join(cwd, vendorDir)
+		pkg, err := LoadPackageFile(filepath.Join(root, gx.PkgFileName))
+		if err != nil {
+			return err
+		}
+
+		pkgdir := filepath.Join(root, vendorDir)
 		if pdopt := c.String("pkgdir"); pdopt != "" {
 			pkgdir = pdopt
 		}
@@ -297,7 +302,7 @@ var RewriteCommand = cli.Command{
 			return nil
 		}
 
-		err = doRewrite(pkg, cwd, mapping)
+		err = doRewrite(pkg, root, mapping)
 		if err != nil {
 			return err
 		}
