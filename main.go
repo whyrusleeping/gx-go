@@ -135,6 +135,9 @@ var HookCommand = cli.Command{
 		postInitHookCommand,
 		postUpdateHookCommand,
 		postInstallHookCommand,
+		preTestHookCommand,
+		postTestHookCommand,
+		testHookCommand,
 	},
 	Action: func(c *cli.Context) error { return nil },
 }
@@ -667,6 +670,52 @@ var postUpdateHookCommand = cli.Command{
 
 		return nil
 	},
+}
+
+var testHookCommand = cli.Command{
+	Name: "test",
+	Action: func(c *cli.Context) error {
+		args := []string{"test"}
+		args = append(args, c.Args()...)
+		cmd := exec.Command("go", args...)
+		cmd.Stderr = os.Stderr
+		cmd.Stdin = os.Stdin
+		cmd.Stdout = os.Stdout
+		return cmd.Run()
+	},
+}
+
+var preTestHookCommand = cli.Command{
+	Name:  "pre-test",
+	Usage: "",
+	Action: func(c *cli.Context) error {
+		return fullRewrite(false)
+	},
+}
+
+var postTestHookCommand = cli.Command{
+	Name:  "post-test",
+	Usage: "",
+	Action: func(c *cli.Context) error {
+		return fullRewrite(true)
+	},
+}
+
+func fullRewrite(undo bool) error {
+	pkg, err := LoadPackageFile(gx.PkgFileName)
+	if err != nil {
+		return err
+	}
+
+	pkgdir := filepath.Join(cwd, vendorDir)
+
+	mapping := make(map[string]string)
+	err = buildRewriteMapping(pkg, pkgdir, mapping, undo)
+	if err != nil {
+		return fmt.Errorf("build of rewrite mapping failed:\n%s", err)
+	}
+
+	return doRewrite(pkg, cwd, mapping)
 }
 
 func packagesGoImport(p string) (string, error) {
