@@ -673,7 +673,8 @@ var postUpdateHookCommand = cli.Command{
 }
 
 var testHookCommand = cli.Command{
-	Name: "test",
+	Name:            "test",
+	SkipFlagParsing: true,
 	Action: func(c *cli.Context) error {
 		args := []string{"test"}
 		args = append(args, c.Args()...)
