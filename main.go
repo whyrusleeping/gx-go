@@ -60,7 +60,7 @@ func main() {
 	app.Name = "gx-go"
 	app.Author = "whyrusleeping"
 	app.Usage = "gx extensions for golang"
-	app.Version = "1.3.0"
+	app.Version = "1.4.0"
 	app.Flags = []cli.Flag{
 		cli.BoolFlag{
 			Name:  "verbose",
@@ -88,6 +88,7 @@ func main() {
 		ImportCommand,
 		PathCommand,
 		RewriteCommand,
+		rewriteUndoAlias,
 		UpdateCommand,
 		DvcsDepsCommand,
 
@@ -242,10 +243,18 @@ var UpdateCommand = cli.Command{
 	},
 }
 
+var rewriteUndoAlias = cli.Command{
+	Name: "uw",
+	Action: func(c *cli.Context) error {
+		return fullRewrite(true)
+	},
+}
+
 var RewriteCommand = cli.Command{
 	Name:      "rewrite",
 	Usage:     "temporary hack to evade causality",
 	ArgsUsage: "[optional package name]",
+	Aliases:   []string{"rw"},
 	Flags: []cli.Flag{
 		cli.BoolFlag{
 			Name:  "undo",
