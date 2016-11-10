@@ -1,6 +1,6 @@
-# gx-go-tool
+# gx-go
 
-A tool to use with the gx package manager for packages written in go.
+A subtool for the gx package manager for packages written in go.
 
 ## Usage:
 ```
@@ -9,23 +9,28 @@ NAME:
 
 USAGE:
    gx-go [global options] command [command options] [arguments...]
-   
+
 VERSION:
-   0.2.0
-   
+   1.3.0
+
 AUTHOR(S):
-   whyrusleeping 
-   
+   whyrusleeping
+
 COMMANDS:
-   update	update a packages imports to a new path
-   import	import a go package and all its depencies into gx
-   path		prints the import path of the current package within GOPATH
-   hook		go specific hooks to be called by the gx tool
-   help, h	Shows a list of commands or help for one command
-   
+     dep-map      prints out a json dep map for usage by 'import --map'
+     hook         go specific hooks to be called by the gx tool
+     import       import a go package and all its depencies into gx
+     path         prints the import path of the current package within GOPATH
+     rewrite, rw  temporary hack to evade causality
+     uw
+     update       update a packages imports to a new path
+     dvcs-deps    display dvcs deps that arent tracked in gx
+     get          gx-ified `go get`
+
 GLOBAL OPTIONS:
-   --help, -h		show help
-   --version, -v	print the version
+   --verbose      turn on verbose output
+   --help, -h     show help
+   --version, -v  print the version
 ```
 
 ## Intro
@@ -53,6 +58,10 @@ package.json
 	}
 }
 ```
+
+If you're initializing a new gx package from the appropriate location within
+your `GOPATH`, `gx-go` will attempt to pre-fill the dvcsimport field for you
+automatically.
 
 ### Importing an existing package
 Importing an existing go package from gx is easy, just grab its hash from
