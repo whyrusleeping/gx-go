@@ -84,6 +84,18 @@ nicer for development). You can change paths back from their gx paths with:
 gx-go rewrite --undo
 ```
 
+A few other notes:
+
+- When publishing, make sure that you don't have any duplicate dependencies
+  (different hash versions of the same package). You can check this with `gx
+  deps dupes`
+- Make sure that you arent missing any dependencies, With your dependencies
+  written in gx form, run `gx-go dvcs-deps`. If it outputs any package that is
+  not the package you are publishing, you should probably look at importing
+  that package to gx as well.
+- Make sure the tests pass with gx rewritten deps. `gx test` will write gx deps
+  and run `go test` for you.
+
 ## NOTE:
 It is highly recommended that you set your `GOPATH` to a temporary directory when running import.
 This ensures that your current go packages are not affected, and also that fresh versions of
