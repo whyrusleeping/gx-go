@@ -92,6 +92,7 @@ func main() {
 		UpdateCommand,
 		DvcsDepsCommand,
 
+		DevCopyCommand,
 		// Go tool compat:
 		GetCommand,
 	}
@@ -709,6 +710,82 @@ var postTestHookCommand = cli.Command{
 	Action: func(c *cli.Context) error {
 		return fullRewrite(true)
 	},
+}
+
+var DevCopyCommand = cli.Command{
+	Name:  "devcopy",
+	Usage: "Create a development copy of the given package",
+	Action: func(c *cli.Context) error {
+		// gx install --local
+		// gx-go rewrite --undo
+		// symlink <hash> -> dvcs path
+
+		Log("creating local copy of deps")
+		cmd := exec.Command("gx", "install", "--local")
+		cmd.Stderr = os.Stderr
+		cmd.Stdout = os.Stdout
+		if err := cmd.Run(); err != nil {
+			return err
+		}
+
+		Log("change imports to dvcs")
+		cmd = exec.Command("gx-go", "rewrite", "--undo")
+		cmd.Stderr = os.Stderr
+		cmd.Stdout = os.Stdout
+		if err := cmd.Run(); err != nil {
+			return err
+		}
+
+		pkg, err := LoadPackageFile(gx.PkgFileName)
+		if err != nil {
+			return err
+		}
+
+		return devCopySymlinking(filepath.Join(cwd, "vendor"), pkg, make(map[string]bool))
+	},
+}
+
+func devCopySymlinking(root string, pkg *Package, done map[string]bool) error {
+	for _, dep := range pkg.Dependencies {
+		if done[dep.Hash] {
+			continue
+		}
+		done[dep.Hash] = true
+
+		var cpkg Package
+		err := gx.LoadPackage(&cpkg, pkg.Language, dep.Hash)
+		if err != nil {
+			if os.IsNotExist(err) {
+				VLog("LoadPackage error: ", err)
+				return fmt.Errorf("package %s (%s) not found", dep.Name, dep.Hash)
+			}
+			return err
+		}
+
+		frompath := filepath.Join(root, "gx", "ipfs", dep.Hash, dep.Name)
+		cmd := exec.Command("gx-go", "rewrite", "--undo")
+		cmd.Stdout = os.Stdout
+		cmd.Stderr = os.Stderr
+		cmd.Dir = frompath
+		if err := cmd.Run(); err != nil {
+			return err
+		}
+
+		topath := filepath.Join(root, cpkg.Gx.DvcsImport)
+		dir := filepath.Dir(topath)
+		if err := os.MkdirAll(dir, 0755); err != nil {
+			return err
+		}
+
+		if err := os.Symlink(frompath, topath); err != nil {
+			return err
+		}
+
+		if err := devCopySymlinking(root, &cpkg, done); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func fullRewrite(undo bool) error {
