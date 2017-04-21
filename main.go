@@ -16,6 +16,7 @@ import (
 	"text/tabwriter"
 
 	cli "github.com/codegangsta/cli"
+	homedir "github.com/mitchellh/go-homedir"
 	rw "github.com/whyrusleeping/gx-go/rewrite"
 	gx "github.com/whyrusleeping/gx/gxutil"
 	. "github.com/whyrusleeping/stump"
@@ -1054,7 +1055,7 @@ func tabPrintSortedMap(headers []string, m map[string]string) {
 func getGoPath() (string, error) {
 	gp := os.Getenv("GOPATH")
 	if gp == "" {
-		return "", fmt.Errorf("GOPATH not set")
+		return homedir.Expand("~/go")
 	}
 
 	return filepath.SplitList(gp)[0], nil
