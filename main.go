@@ -354,20 +354,11 @@ var DvcsDepsCommand = cli.Command{
 }
 
 func getImportPath(pkgpath string) (string, error) {
-	gopath, err := getGoPath()
+	pkg, err := LoadPackageFile(filepath.Join(pkgpath, gx.PkgFileName))
 	if err != nil {
-		return "", fmt.Errorf("GOPATH not set, cannot derive import path")
+		return "", err
 	}
-
-	srcdir := path.Join(gopath, "src")
-	srcdir += "/"
-
-	if !strings.HasPrefix(cwd, srcdir) {
-		return "", fmt.Errorf("package not within GOPATH/src")
-	}
-
-	rel := cwd[len(srcdir):]
-	return rel, nil
+	return pkg.Gx.DvcsImport, nil
 }
 
 var PathCommand = cli.Command{
