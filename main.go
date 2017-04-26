@@ -402,9 +402,6 @@ func fixImports(path string) error {
 			if rest != "" {
 				rest = "/" + rest
 			}
-			if canon != imp {
-				fmt.Printf("CANON: %s -> %s\n", imp, canon)
-			}
 
 			if base, ok := fixmap[canon]; ok {
 				return base + rest
