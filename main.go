@@ -270,11 +270,19 @@ var RewriteCommand = cli.Command{
 			Name:  "pkgdir",
 			Usage: "alternative location of the package directory",
 		},
+		cli.BoolFlag{
+			Name:  "fix",
+			Usage: "more error tolerant version of '--undo'",
+		},
 	},
 	Action: func(c *cli.Context) error {
 		root, err := gx.GetPackageRoot()
 		if err != nil {
 			return err
+		}
+
+		if c.Bool("fix") {
+			return fixImports(root)
 		}
 
 		pkg, err := LoadPackageFile(filepath.Join(root, gx.PkgFileName))
@@ -381,6 +389,46 @@ func goGetPackage(path string) error {
 	cmd.Stderr = os.Stderr
 	cmd.Run()
 	return nil
+}
+
+func fixImports(path string) error {
+	fixmap := make(map[string]string)
+	gopath := os.Getenv("GOPATH")
+	rwf := func(imp string) string {
+		if strings.HasPrefix(imp, "gx/ipfs/") {
+			parts := strings.Split(imp, "/")
+			canon := strings.Join(parts[:4], "/")
+			rest := strings.Join(parts[4:], "/")
+			if rest != "" {
+				rest = "/" + rest
+			}
+			if canon != imp {
+				fmt.Printf("CANON: %s -> %s\n", imp, canon)
+			}
+
+			if base, ok := fixmap[canon]; ok {
+				return base + rest
+			}
+
+			var pkg Package
+			err := gx.FindPackageInDir(&pkg, filepath.Join(gopath, "src", canon))
+			if err != nil {
+				fmt.Println(err)
+				return imp
+			}
+			if pkg.Gx.DvcsImport != "" {
+				fixmap[imp] = pkg.Gx.DvcsImport
+				return pkg.Gx.DvcsImport + rest
+			}
+			fmt.Printf("Package %s has no dvcs import set!\n", imp)
+		}
+		return imp
+	}
+
+	filter := func(s string) bool {
+		return strings.HasSuffix(s, ".go")
+	}
+	return rw.RewriteImports(path, rwf, filter)
 }
 
 var GetCommand = cli.Command{
