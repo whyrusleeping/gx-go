@@ -280,7 +280,7 @@ var RewriteCommand = cli.Command{
 		if err != nil {
 			return err
 		}
-		lroot, err := filepath.EvalSymlinks(lroot)
+		lroot, err := filepath.EvalSymlinks(mroot)
 		if err != nil {
 			return err
 		}
