@@ -276,10 +276,15 @@ var RewriteCommand = cli.Command{
 		},
 	},
 	Action: func(c *cli.Context) error {
-		root, err := gx.GetPackageRoot()
+		mroot, err := gx.GetPackageRoot()
 		if err != nil {
 			return err
 		}
+		lroot, err := filepath.EvalSymlinks(lroot)
+		if err != nil {
+			return err
+		}
+		root := lroot
 
 		if c.Bool("fix") {
 			return fixImports(root)
