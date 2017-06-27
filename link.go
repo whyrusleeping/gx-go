@@ -53,10 +53,15 @@ unlinked QmVGtdTZdTFaLsaj2RwdVG8jcjNNcp1DE914DKZ2kHmXHw /home/user/go/src/github
 			Name:  "a,all",
 			Usage: "Remove all existing symlinks and reinstate the gx packages. Use with -r.",
 		},
+		cli.BoolFlag{
+			Name:  "w,write-imports",
+			Usage: "Re-write or un-rewrite import paths",
+		},
 	},
 	Action: func(c *cli.Context) error {
 		remove := c.Bool("remove")
 		all := c.Bool("all")
+		writeImports := c.Bool("write-imports")
 
 		hashes := c.Args()[:]
 		if len(hashes) == 0 {
@@ -81,13 +86,13 @@ unlinked QmVGtdTZdTFaLsaj2RwdVG8jcjNNcp1DE914DKZ2kHmXHw /home/user/go/src/github
 
 		for _, hash := range hashes {
 			if remove {
-				target, err := unlinkPackage(hash)
+				target, err := unlinkPackage(hash, writeImports)
 				if err != nil {
 					return err
 				}
 				fmt.Printf("unlinked %s %s\n", hash, target)
 			} else {
-				target, err := linkPackage(hash)
+				target, err := linkPackage(hash, writeImports)
 				if err != nil {
 					return err
 				}
@@ -138,7 +143,7 @@ func listLinkedPackages() ([][]string, error) {
 // rm -rf $GOPATH/src/gx/ipfs/$hash/$pkgname
 // ln -s $GOPATH/src/$dvcsimport $GOPATH/src/gx/ipfs/$hash/$pkgname
 // cd $GOPATH/src/$dvcsimport && gx install && gx-go rewrite
-func linkPackage(hash string) (string, error) {
+func linkPackage(hash string, writeImports bool) (string, error) {
 	srcdir, err := gx.InstallPath("go", "", true)
 	if err != nil {
 		return "", err
@@ -192,12 +197,14 @@ func linkPackage(hash string) (string, error) {
 		return "", fmt.Errorf("error during gx install: %s", err)
 	}
 
-	rwcmd := exec.Command("gx-go", "rw")
-	rwcmd.Dir = target
-	rwcmd.Stdout = nil
-	rwcmd.Stderr = os.Stderr
-	if err := rwcmd.Run(); err != nil {
-		return "", fmt.Errorf("error during gx-go rw: %s", err)
+	if writeImports {
+		rwcmd := exec.Command("gx-go", "rw")
+		rwcmd.Dir = target
+		rwcmd.Stdout = nil
+		rwcmd.Stderr = os.Stderr
+		if err := rwcmd.Run(); err != nil {
+			return "", fmt.Errorf("error during gx-go rw: %s", err)
+		}
 	}
 
 	return target, nil
@@ -205,7 +212,7 @@ func linkPackage(hash string) (string, error) {
 
 // rm -rf $GOPATH/src/gx/ipfs/$hash
 // gx get $hash
-func unlinkPackage(hash string) (string, error) {
+func unlinkPackage(hash string, writeImports bool) (string, error) {
 	srcdir, err := gx.InstallPath("go", "", true)
 	if err != nil {
 		return "", err
@@ -233,12 +240,14 @@ func unlinkPackage(hash string) (string, error) {
 	dvcsimport := GxDvcsImport(&pkg)
 	target := filepath.Join(srcdir, dvcsimport)
 
-	uwcmd := exec.Command("gx-go", "uw")
-	uwcmd.Dir = target
-	uwcmd.Stdout = nil
-	uwcmd.Stderr = os.Stderr
-	if err := uwcmd.Run(); err != nil {
-		return "", fmt.Errorf("error during gx-go uw: %s", err)
+	if writeImports {
+		uwcmd := exec.Command("gx-go", "uw")
+		uwcmd.Dir = target
+		uwcmd.Stdout = nil
+		uwcmd.Stderr = os.Stderr
+		if err := uwcmd.Run(); err != nil {
+			return "", fmt.Errorf("error during gx-go uw: %s", err)
+		}
 	}
 
 	return target, nil
