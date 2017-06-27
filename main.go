@@ -92,6 +92,7 @@ func main() {
 		rewriteUndoAlias,
 		UpdateCommand,
 		DvcsDepsCommand,
+		LinkCommand,
 
 		DevCopyCommand,
 		// Go tool compat:
