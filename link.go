@@ -55,7 +55,7 @@ unlinked QmVGtdTZdTFaLsaj2RwdVG8jcjNNcp1DE914DKZ2kHmXHw /home/user/go/src/github
 		},
 		cli.BoolFlag{
 			Name:  "n,no-rewrite",
-			Usage: "Re-write or un-rewrite import paths",
+			Usage: "Don't re-write or un-rewrite import paths",
 		},
 	},
 	Action: func(c *cli.Context) error {
