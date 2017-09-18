@@ -78,8 +78,16 @@ unlinked QmVGtdTZdTFaLsaj2RwdVG8jcjNNcp1DE914DKZ2kHmXHw /home/user/go/src/github
 				return nil
 			}
 		}
+		pkg, _ := LoadPackageFile(gx.PkgFileName)
 
 		for _, hash := range hashes {
+			if pkg != nil {
+				// try to resolve
+				if dep := pkg.FindDep(hash); dep != nil {
+					hash = dep.Hash
+				}
+			}
+
 			if remove {
 				target, err := unlinkPackage(hash)
 				if err != nil {
