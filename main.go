@@ -827,12 +827,17 @@ func devCopySymlinking(root string, pkg *Package, done map[string]bool) error {
 }
 
 func fullRewrite(undo bool) error {
-	pkg, err := LoadPackageFile(gx.PkgFileName)
+	root, err := gx.GetPackageRoot()
 	if err != nil {
 		return err
 	}
 
-	pkgdir := filepath.Join(cwd, vendorDir)
+	pkg, err := LoadPackageFile(filepath.Join(root, gx.PkgFileName))
+	if err != nil {
+		return err
+	}
+
+	pkgdir := filepath.Join(root, vendorDir)
 
 	mapping := make(map[string]string)
 	err = buildRewriteMapping(pkg, pkgdir, mapping, undo)
@@ -840,7 +845,7 @@ func fullRewrite(undo bool) error {
 		return fmt.Errorf("build of rewrite mapping failed:\n%s", err)
 	}
 
-	return doRewrite(pkg, cwd, mapping)
+	return doRewrite(pkg, root, mapping)
 }
 
 func packagesGoImport(p string) (string, error) {
