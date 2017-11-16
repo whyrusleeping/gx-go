@@ -53,10 +53,15 @@ unlinked QmVGtdTZdTFaLsaj2RwdVG8jcjNNcp1DE914DKZ2kHmXHw /home/user/go/src/github
 			Name:  "a,all",
 			Usage: "Remove all existing symlinks and reinstate the gx packages. Use with -r.",
 		},
+		cli.BoolFlag{
+			Name:  "n,no-rewrite",
+			Usage: "Don't modify import paths.",
+		},
 	},
 	Action: func(c *cli.Context) error {
 		remove := c.Bool("remove")
 		all := c.Bool("all")
+		noRewrite := c.Bool("no-rewrite")
 
 		hashes := c.Args()[:]
 		if len(hashes) == 0 {
@@ -89,13 +94,13 @@ unlinked QmVGtdTZdTFaLsaj2RwdVG8jcjNNcp1DE914DKZ2kHmXHw /home/user/go/src/github
 			}
 
 			if remove {
-				target, err := unlinkPackage(hash)
+				target, err := unlinkPackage(hash, noRewrite)
 				if err != nil {
 					return err
 				}
 				fmt.Printf("unlinked %s %s\n", hash, target)
 			} else {
-				target, err := linkPackage(hash)
+				target, err := linkPackage(hash, noRewrite)
 				if err != nil {
 					return err
 				}
@@ -146,7 +151,7 @@ func listLinkedPackages() ([][]string, error) {
 // rm -rf $GOPATH/src/gx/ipfs/$hash/$pkgname
 // ln -s $GOPATH/src/$dvcsimport $GOPATH/src/gx/ipfs/$hash/$pkgname
 // cd $GOPATH/src/$dvcsimport && gx install && gx-go rewrite
-func linkPackage(hash string) (string, error) {
+func linkPackage(hash string, noRewrite bool) (string, error) {
 	srcdir, err := gx.InstallPath("go", "", true)
 	if err != nil {
 		return "", err
@@ -200,6 +205,10 @@ func linkPackage(hash string) (string, error) {
 		return "", fmt.Errorf("error during gx install: %s", err)
 	}
 
+	if noRewrite {
+		return target, nil
+	}
+
 	rwcmd := exec.Command("gx-go", "rw")
 	rwcmd.Dir = target
 	rwcmd.Stdout = nil
@@ -213,7 +222,7 @@ func linkPackage(hash string) (string, error) {
 
 // rm -rf $GOPATH/src/gx/ipfs/$hash
 // gx get $hash
-func unlinkPackage(hash string) (string, error) {
+func unlinkPackage(hash string, noRewrite bool) (string, error) {
 	srcdir, err := gx.InstallPath("go", "", true)
 	if err != nil {
 		return "", err
@@ -240,6 +249,10 @@ func unlinkPackage(hash string) (string, error) {
 
 	dvcsimport := GxDvcsImport(&pkg)
 	target := filepath.Join(srcdir, dvcsimport)
+
+	if noRewrite {
+		return target, nil
+	}
 
 	uwcmd := exec.Command("gx-go", "uw")
 	uwcmd.Dir = target
