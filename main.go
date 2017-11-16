@@ -336,7 +336,7 @@ var RewriteCommand = cli.Command{
 
 var DvcsDepsCommand = cli.Command{
 	Name:  "dvcs-deps",
-	Usage: "display dvcs deps that arent tracked in gx",
+	Usage: "display all dvcs deps",
 	Action: func(c *cli.Context) error {
 		i, err := NewImporter(false, os.Getenv("GOPATH"), nil)
 		if err != nil {
