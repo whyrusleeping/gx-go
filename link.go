@@ -200,9 +200,9 @@ func linkPackage(hash string) (string, error) {
 		return "", fmt.Errorf("error during gx install: %s", err)
 	}
 
-	rwcmd := exec.Command("gx-go", "rw")
+	rwcmd := exec.Command("gx-go", "hook", "post-install", gxdir)
 	rwcmd.Dir = target
-	rwcmd.Stdout = nil
+	rwcmd.Stdout = os.Stdout
 	rwcmd.Stderr = os.Stderr
 	if err := rwcmd.Run(); err != nil {
 		return "", fmt.Errorf("error during gx-go rw: %s", err)

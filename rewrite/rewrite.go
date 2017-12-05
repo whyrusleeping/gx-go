@@ -9,6 +9,7 @@ import (
 	"go/printer"
 	"go/token"
 	"os"
+	"path/filepath"
 	"regexp"
 	"strconv"
 	"strings"
@@ -27,7 +28,12 @@ func init() {
 	}
 }
 
-func RewriteImports(path string, rw func(string) string, filter func(string) bool) error {
+func RewriteImports(ipath string, rw func(string) string, filter func(string) bool) error {
+	path, err := filepath.EvalSymlinks(ipath)
+	if err != nil {
+		return err
+	}
+
 	w := fs.Walk(path)
 	for w.Step() {
 		rel := w.Path()[len(path):]
