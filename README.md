@@ -24,7 +24,7 @@ COMMANDS:
      rewrite, rw  temporary hack to evade causality
      uw
      update       update a packages imports to a new path
-     dvcs-deps    display dvcs deps that arent tracked in gx
+     dvcs-deps    display all dvcs deps
      get          gx-ified `go get`
 
 GLOBAL OPTIONS:
