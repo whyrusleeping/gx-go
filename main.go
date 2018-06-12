@@ -1017,23 +1017,32 @@ func addRewriteForDep(dep *gx.Dependency, pkg *Package, m map[string]string, und
 }
 
 func buildRewriteMapping(pkg *Package, pkgdir string, m map[string]string, undo bool) error {
-	for _, dep := range pkg.Dependencies {
-		cpkg, err := loadDep(dep, pkgdir)
-		if err != nil {
-			VLog("error loading dep %q of %q: %s", dep.Name, pkg.Name, err)
-			return fmt.Errorf("package %q not found. (dependency of %s)", dep.Name, pkg.Name)
-		}
+	seen := make(map[string]struct{})
+	var process func(pkg *Package) error
+	process = func(pkg *Package) error {
+		for _, dep := range pkg.Dependencies {
+			if _, ok := seen[dep.Hash]; ok {
+				continue
+			}
+			seen[dep.Hash] = struct{}{}
 
-		addRewriteForDep(dep, cpkg, m, undo)
+			cpkg, err := loadDep(dep, pkgdir)
+			if err != nil {
+				VLog("error loading dep %q of %q: %s", dep.Name, pkg.Name, err)
+				return fmt.Errorf("package %q not found. (dependency of %s)", dep.Name, pkg.Name)
+			}
 
-		// recurse!
-		err = buildRewriteMapping(cpkg, pkgdir, m, undo)
-		if err != nil {
-			return err
+			addRewriteForDep(dep, cpkg, m, undo)
+
+			// recurse!
+			err = process(cpkg)
+			if err != nil {
+				return err
+			}
 		}
+		return nil
 	}
-
-	return nil
+	return process(pkg)
 }
 
 func buildMap(pkg *Package, m map[string]string) error {
