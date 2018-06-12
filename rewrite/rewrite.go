@@ -112,8 +112,13 @@ func rewriteImportsInFile(fi string, rw func(string) string) error {
 	if err != nil {
 		return err
 	}
+	bw := bufio.NewWriter(w)
 
-	if err = cfg.Fprint(w, fset, file); err != nil {
+	if err = cfg.Fprint(bw, fset, file); err != nil {
+		return err
+	}
+
+	if err := bw.Flush(); err != nil {
 		return err
 	}
 
