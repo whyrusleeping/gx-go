@@ -11,6 +11,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"runtime"
 	"strconv"
 	"strings"
 	"sync"
@@ -18,20 +19,35 @@ import (
 	fs "github.com/kr/fs"
 )
 
-var bufpool *sync.Pool
-
-func init() {
-	bufpool = &sync.Pool{
-		New: func() interface{} {
-			return new(bytes.Buffer)
-		},
-	}
+var bufpool = &sync.Pool{
+	New: func() interface{} {
+		return new(bytes.Buffer)
+	},
 }
+
+var cfg = &printer.Config{Mode: printer.UseSpaces | printer.TabIndent, Tabwidth: 8}
 
 func RewriteImports(ipath string, rw func(string) string, filter func(string) bool) error {
 	path, err := filepath.EvalSymlinks(ipath)
 	if err != nil {
 		return err
+	}
+
+	var rwLock sync.Mutex
+
+	var wg sync.WaitGroup
+	torewrite := make(chan string)
+	for i := 0; i < runtime.NumCPU(); i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for path := range torewrite {
+				err := rewriteImportsInFile(path, rw, &rwLock)
+				if err != nil {
+					fmt.Println("rewrite error: ", err)
+				}
+			}
+		}()
 	}
 
 	w := fs.Walk(path)
@@ -54,28 +70,27 @@ func RewriteImports(ipath string, rw func(string) string, filter func(string) bo
 		if !filter(rel) {
 			continue
 		}
-
-		err := rewriteImportsInFile(w.Path(), rw)
-		if err != nil {
-			fmt.Println("rewrite error: ", err)
-		}
+		torewrite <- w.Path()
 	}
+	close(torewrite)
+	wg.Wait()
 	return nil
 }
 
 // inspired by godeps rewrite, rewrites import paths with gx vendored names
-func rewriteImportsInFile(fi string, rw func(string) string) error {
-	cfg := &printer.Config{Mode: printer.UseSpaces | printer.TabIndent, Tabwidth: 8}
+func rewriteImportsInFile(fi string, rw func(string) string, rwLock *sync.Mutex) error {
 	fset := token.NewFileSet()
 	file, err := parser.ParseFile(fset, fi, nil, parser.ParseComments)
 	if err != nil {
 		return err
 	}
 
+	rwLock.Lock()
 	var changed bool
 	for _, imp := range file.Imports {
 		p, err := strconv.Unquote(imp.Path.Value)
 		if err != nil {
+			rwLock.Unlock()
 			return err
 		}
 
@@ -86,6 +101,7 @@ func rewriteImportsInFile(fi string, rw func(string) string) error {
 			imp.Path.Value = strconv.Quote(np)
 		}
 	}
+	rwLock.Unlock()
 
 	if !changed {
 		return nil
