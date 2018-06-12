@@ -8,6 +8,7 @@ import (
 	"go/parser"
 	"go/printer"
 	"go/token"
+	"io"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -79,11 +80,17 @@ func RewriteImports(ipath string, rw func(string) string, filter func(string) bo
 
 // inspired by godeps rewrite, rewrites import paths with gx vendored names
 func rewriteImportsInFile(fi string, rw func(string) string, rwLock *sync.Mutex) error {
+	// 1. Rewrite the imports (if we have any)
 	fset := token.NewFileSet()
-	file, err := parser.ParseFile(fset, fi, nil, parser.ParseComments)
+	file, err := parser.ParseFile(fset, fi, nil, parser.ParseComments|parser.ImportsOnly)
 	if err != nil {
 		return err
 	}
+	if len(file.Imports) == 0 {
+		return nil
+	}
+
+	oldImportsEnd := fset.Position(file.Imports[len(file.Imports)-1].End()).Offset
 
 	rwLock.Lock()
 	var changed bool
@@ -108,41 +115,82 @@ func rewriteImportsInFile(fi string, rw func(string) string, rwLock *sync.Mutex)
 	}
 
 	buf := bufpool.Get().(*bytes.Buffer)
+	defer func() {
+		bufpool.Put(buf)
+	}()
+
+	// Write them back to a temporary buffer
+
+	buf.Reset()
 	if err = cfg.Fprint(buf, fset, file); err != nil {
 		return err
 	}
 
+	// 2. Read the imports back in to sort them.
+
 	fset = token.NewFileSet()
-	file, err = parser.ParseFile(fset, fi, buf, parser.ParseComments)
+	file, err = parser.ParseFile(fset, fi, buf, parser.ParseComments|parser.ImportsOnly)
 	if err != nil {
 		return err
 	}
-
-	buf.Reset()
-	bufpool.Put(buf)
 
 	ast.SortImports(fset, file)
 
-	wpath := fi + ".temp"
-	w, err := os.Create(wpath)
+	// Write them back to a temporary buffer
+
+	buf.Reset()
+	if err = cfg.Fprint(buf, fset, file); err != nil {
+		return err
+	}
+
+	// 3. Read them back in to find the new end of the imports.
+
+	fset = token.NewFileSet()
+	file, err = parser.ParseFile(fset, fi, buf, parser.ParseComments|parser.ImportsOnly)
 	if err != nil {
 		return err
 	}
-	bw := bufio.NewWriter(w)
 
-	if err = cfg.Fprint(bw, fset, file); err != nil {
+	newImportsEnd := fset.Position(file.Imports[len(file.Imports)-1].End()).Offset
+
+	// Write them back to the buffer and truncate.
+	buf.Reset()
+	if err = cfg.Fprint(buf, fset, file); err != nil {
+		return err
+	}
+	buf.Truncate(newImportsEnd)
+
+	// Finally, build the file.
+
+	tmppath := fi + ".temp"
+	tmp, err := os.Create(tmppath)
+	if err != nil {
 		return err
 	}
 
-	if err := bw.Flush(); err != nil {
+	src, err := os.Open(fi)
+	if err != nil {
+		return err
+	}
+	defer src.Close()
+
+	_, err = src.Seek(int64(oldImportsEnd), io.SeekStart)
+	if err != nil {
 		return err
 	}
 
-	if err = w.Close(); err != nil {
+	buf.WriteTo(tmp)
+
+	_, err = io.Copy(tmp, src)
+	if err != nil {
 		return err
 	}
 
-	return os.Rename(wpath, fi)
+	if err = tmp.Close(); err != nil {
+		return err
+	}
+
+	return os.Rename(tmppath, fi)
 }
 
 func fixCanonicalImports(buf []byte) (bool, error) {
