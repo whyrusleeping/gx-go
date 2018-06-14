@@ -168,24 +168,34 @@ func rewriteImportsInFile(fi string, rw func(string) string, rwLock *sync.Mutex)
 		return err
 	}
 
+	// Write the imports
+	_, err = buf.WriteTo(tmp)
+	if err != nil {
+		return err
+	}
+
+	// Copy the rest
 	src, err := os.Open(fi)
 	if err != nil {
 		return err
 	}
-	defer src.Close()
 
 	_, err = src.Seek(int64(oldImportsEnd), io.SeekStart)
 	if err != nil {
+		src.Close()
 		return err
 	}
-
-	buf.WriteTo(tmp)
 
 	_, err = io.Copy(tmp, src)
 	if err != nil {
+		src.Close()
 		return err
 	}
 
+	// Ignore any errors, we didn't modify this file.
+	src.Close()
+
+	// Update the file
 	if err = tmp.Close(); err != nil {
 		return err
 	}
