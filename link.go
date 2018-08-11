@@ -171,7 +171,7 @@ func linkPackage(hash string) (string, error) {
 	gxtarget := filepath.Join(gxdir, pkg.Name)
 
 	_, err = os.Stat(target)
-	if err == os.ErrNotExist {
+	if os.IsNotExist(err) {
 		goget := exec.Command("go", "get", dvcsimport+"/...")
 		goget.Stdout = nil
 		goget.Stderr = os.Stderr
