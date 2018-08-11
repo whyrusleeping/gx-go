@@ -61,7 +61,7 @@ func main() {
 	app.Name = "gx-go"
 	app.Author = "whyrusleeping"
 	app.Usage = "gx extensions for golang"
-	app.Version = "1.4.0"
+	app.Version = "1.8.0"
 	app.Flags = []cli.Flag{
 		cli.BoolFlag{
 			Name:  "verbose",
