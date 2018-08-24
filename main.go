@@ -93,6 +93,7 @@ func main() {
 		UpdateCommand,
 		DvcsDepsCommand,
 		LinkCommand,
+		LockGenCommand,
 
 		DevCopyCommand,
 		// Go tool compat:
@@ -126,6 +127,35 @@ var DepMapCommand = cli.Command{
 
 		os.Stdout.Write(out)
 		return nil
+	},
+}
+
+var LockGenCommand = cli.Command{
+	Name:  "lock-gen",
+	Usage: "Generate a lock file",
+	Action: func(c *cli.Context) error {
+		pkg, err := LoadPackageFile(gx.PkgFileName)
+		if err != nil {
+			return err
+		}
+
+		done := make(map[string]bool)
+		lockFile := gx.LockFile{
+			Language: pkg.Language,
+		}
+		lockFile.Deps = make(map[string]gx.LockDep)
+
+		if err := genLockDeps(pkg, lockFile.Deps, done); err != nil {
+			return err
+		}
+
+		m, err := json.MarshalIndent(lockFile, "", "  ")
+		if err != nil {
+			return err
+		}
+
+		_, err = os.Stdout.Write(m)
+		return err
 	},
 }
 
@@ -781,6 +811,40 @@ var DevCopyCommand = cli.Command{
 
 		return devCopySymlinking(filepath.Join(cwd, "vendor"), pkg, make(map[string]bool))
 	},
+}
+
+func genLockDeps(pkg *Package, deps map[string]gx.LockDep, done map[string]bool) error {
+	for _, dep := range pkg.Dependencies {
+		if done[dep.Hash] {
+			continue
+		}
+
+		done[dep.Hash] = true
+
+		var cpkg Package
+		err := gx.LoadPackage(&cpkg, pkg.Language, dep.Hash)
+		if err != nil {
+			if os.IsNotExist(err) {
+				VLog("LoadPackage error: ", err)
+				return fmt.Errorf("package %s (%s) not found", dep.Name, dep.Hash)
+			}
+			return err
+		}
+
+		if _, ok := deps[cpkg.Gx.DvcsImport]; ok {
+			return fmt.Errorf("Found a duplicate import %s", cpkg.Gx.DvcsImport)
+		}
+
+		deps[cpkg.Gx.DvcsImport] = gx.LockDep{
+			Ref: fmt.Sprintf("/ipfs/%s/%s", dep.Hash, dep.Name),
+		}
+
+		if err := genLockDeps(&cpkg, deps, done); err != nil {
+			return err
+		}
+	}
+
+	return nil
 }
 
 func devCopySymlinking(root string, pkg *Package, done map[string]bool) error {
