@@ -133,7 +133,15 @@ var DepMapCommand = cli.Command{
 var LockGenCommand = cli.Command{
 	Name:  "lock-gen",
 	Usage: "Generate a lock file",
+	Flags: []cli.Flag{
+		cli.BoolFlag{
+			Name:  "ignore-conflicts",
+			Usage: "Does not error on conflicting import in sub-packages",
+		},
+	},
 	Action: func(c *cli.Context) error {
+		ignoreConflict := c.Bool("ignore-duplicate")
+
 		pkg, err := LoadPackageFile(gx.PkgFileName)
 		if err != nil {
 			return err
@@ -145,7 +153,7 @@ var LockGenCommand = cli.Command{
 		}
 		lockFile.Deps = make(map[string]gx.LockDep)
 
-		if err := genLockDeps(pkg, lockFile.Deps, done); err != nil {
+		if err := genLockDeps(pkg, lockFile.Deps, done, ignoreConflict); err != nil {
 			return err
 		}
 
@@ -813,7 +821,7 @@ var DevCopyCommand = cli.Command{
 	},
 }
 
-func genLockDeps(pkg *Package, deps map[string]gx.LockDep, done map[string]bool) error {
+func genLockDeps(pkg *Package, deps map[string]gx.LockDep, done map[string]bool, ignoreConflict bool) error {
 	for _, dep := range pkg.Dependencies {
 		if done[dep.Hash] {
 			continue
@@ -831,15 +839,18 @@ func genLockDeps(pkg *Package, deps map[string]gx.LockDep, done map[string]bool)
 			return err
 		}
 
-		if _, ok := deps[cpkg.Gx.DvcsImport]; ok {
-			return fmt.Errorf("Found a duplicate import %s", cpkg.Gx.DvcsImport)
+		ref := fmt.Sprintf("/ipfs/%s/%s", dep.Hash, dep.Name)
+		if d, found := deps[cpkg.Gx.DvcsImport]; found {
+			if !ignoreConflict && ref != d.Ref {
+				return fmt.Errorf("Found a duplicate import %s for package %s", cpkg.Gx.DvcsImport, pkg.Name)
+			}
+		} else {
+			deps[cpkg.Gx.DvcsImport] = gx.LockDep{
+				Ref: ref,
+			}
 		}
 
-		deps[cpkg.Gx.DvcsImport] = gx.LockDep{
-			Ref: fmt.Sprintf("/ipfs/%s/%s", dep.Hash, dep.Name),
-		}
-
-		if err := genLockDeps(&cpkg, deps, done); err != nil {
+		if err := genLockDeps(&cpkg, deps, done, ignoreConflict); err != nil {
 			return err
 		}
 	}
