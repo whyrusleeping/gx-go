@@ -1036,22 +1036,33 @@ func globalPath() string {
 	return filepath.Join(gp, "src", "gx", "ipfs")
 }
 
-func loadDep(dep *gx.Dependency, pkgdir string) (*Package, error) {
-	var cpkg Package
-	pdir := filepath.Join(pkgdir, dep.Hash)
-	VLog("  - fetching dep: %s (%s)", dep.Name, dep.Hash)
-	err := gx.FindPackageInDir(&cpkg, pdir)
-	if err != nil {
-		// try global
-		p := filepath.Join(globalPath(), dep.Hash)
-		VLog("  - checking in global namespace (%s)", p)
-		gerr := gx.FindPackageInDir(&cpkg, p)
-		if gerr != nil {
-			return nil, fmt.Errorf("failed to find package: %s", gerr)
+// Load the `Dependency` by its hash returning the `Package` where it's
+// installed, `pkgDir` is an optional parameter with the directory
+// where to look for that dependency.
+// TODO: `pkgDir` isn't actually the package directory, it's where
+// *all* the packages are stored, it should have another name (and
+// it shouldn't be "packages directory").
+func loadDep(dep *gx.Dependency, pkgDir string) (*Package, error) {
+	var pkg Package
+	if pkgDir != "" {
+		pkgPath := filepath.Join(pkgDir, dep.Hash)
+		VLog("  - fetching dep: %s (%s)", dep.Name, dep.Hash)
+		err := gx.FindPackageInDir(&pkg, pkgPath)
+		if err == nil {
+			return &pkg, nil
 		}
 	}
 
-	return &cpkg, nil
+	// Either `pkgDir` wasn't specified or it failed
+	// to find it there, try global path.
+	p := filepath.Join(globalPath(), dep.Hash)
+	VLog("  - checking in global namespace (%s)", p)
+	gerr := gx.FindPackageInDir(&pkg, p)
+	if gerr != nil {
+		return nil, fmt.Errorf("failed to find package: %s", gerr)
+	}
+
+	return &pkg, nil
 }
 
 // Rewrites the package `DvcsImport` with the dependency hash (or
