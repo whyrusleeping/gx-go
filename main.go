@@ -592,6 +592,10 @@ var postInstallHookCommand = cli.Command{
 			Name:  "global",
 			Usage: "specifies whether or not the install was global",
 		},
+		cli.StringFlag{
+			Name:  "override-deps",
+			Usage: "path of a package used to override dependency versions (intended to be used with the link command)",
+		},
 	},
 	Action: func(c *cli.Context) error {
 		if !c.Args().Present() {
@@ -621,10 +625,58 @@ var postInstallHookCommand = cli.Command{
 			reldir = dir
 		}
 
+		var depsPkg *Package
+		var depsPkgDir string
+		if depsPkgDir = c.String("override-deps"); depsPkgDir != "" {
+			err := gx.FindPackageInDir(&depsPkg, depsPkgDir)
+			if err != nil {
+				return fmt.Errorf("find deps package in %s failed : %s", depsPkgDir, err)
+			}
+		}
+
 		mapping := make(map[string]string)
 		err = buildRewriteMapping(&pkg, reldir, mapping, false)
 		if err != nil {
-			return fmt.Errorf("building rewrite mapping failed: %s", err)
+			return fmt.Errorf("building rewrite mapping failed for package %s: %s", pkg.Name, err)
+		}
+
+		if depsPkg != nil {
+			// Use the dependency versions of `depsPkg` in case of a mismatch
+			// with the versions in `pkg`.
+
+			depsRewriteMap := make(map[string]string)
+			err = buildRewriteMapping(depsPkg, depsPkgDir, depsRewriteMap, false)
+			if err != nil {
+				return fmt.Errorf("building rewrite mapping failed for package %s: %s", depsPkg.Name, err)
+				// TODO: All the dependencies of the deps package need to be fetched. Should we call
+				// `gx install --global`?
+
+			}
+
+			// Iterate the `rewriteMap` indexed by the DVCS imports (since `undo`
+			// is false) and replace them with dependencies found in the
+			// `depsRewriteMap` if the gx import paths don't match (that is,
+			// if their versions are different).
+			var replacedImports []string
+			for dvcsImport, gxImportPath := range mapping {
+				depsGxImportPath, exists := depsRewriteMap[dvcsImport]
+
+				if exists && gxImportPath != depsGxImportPath {
+					mapping[dvcsImport] = depsGxImportPath
+					replacedImports = append(replacedImports, dvcsImport)
+				}
+			}
+
+			if len(replacedImports) > 0 {
+				fmt.Printf("Replaced %d entries in the rewrite map:\n", len(replacedImports))
+				for _, dvcsImport := range(replacedImports) {
+					fmt.Printf("  %s\n", dvcsImport)
+				}
+			}
+			// TODO: This should be handled by the `VLog` function.
+			// (At the moment this is called from `gx-go link` which doesn't
+			// have access to the global `Verbose` flag to check whether to
+			// include the `--verbose` argument or not.)
 		}
 
 		hash := filepath.Base(npkg)
@@ -1030,6 +1082,9 @@ func addRewriteForDep(dep *gx.Dependency, pkg *Package, m map[string]string, und
 }
 
 func buildRewriteMapping(pkg *Package, pkgdir string, m map[string]string, undo bool) error {
+	// TODO: Encapsulate `Package` and `pkgDir` in another structure
+	// (such as `installedPackage`).
+
 	seen := make(map[string]struct{})
 	var process func(pkg *Package, rootPackage bool) error
 
