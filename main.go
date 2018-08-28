@@ -315,7 +315,7 @@ var RewriteCommand = cli.Command{
 					return err
 				}
 
-				addRewriteForDep(dep, pkg, mapping, c.Bool("undo"))
+				addRewriteForDep(dep, pkg, mapping, c.Bool("undo"), true)
 			}
 		}
 		VLog("  - rewrite mapping complete")
@@ -1005,21 +1005,39 @@ func loadDep(dep *gx.Dependency, pkgdir string) (*Package, error) {
 	return &cpkg, nil
 }
 
-func addRewriteForDep(dep *gx.Dependency, pkg *Package, m map[string]string, undo bool) {
-	if pkg.Gx.DvcsImport != "" {
-		from := pkg.Gx.DvcsImport
-		to := "gx/ipfs/" + dep.Hash + "/" + pkg.Name
-		if undo {
-			from, to = to, from
-		}
+// Rewrites the package `DvcsImport` with the dependency hash (or
+// the other way around if `undo` is true). `overwrite` indicates
+// whether or not to allow overwriting an existing entry in the map.
+func addRewriteForDep(dep *gx.Dependency, pkg *Package, m map[string]string, undo bool, overwrite bool) {
+	if pkg.Gx.DvcsImport == "" {
+		return
+		// Nothing to do as there is no DVCS import path.
+		// TODO: Should this case be flagged?
+	}
+
+	from := pkg.Gx.DvcsImport
+	to := "gx/ipfs/" + dep.Hash + "/" + pkg.Name
+	if undo {
+		from, to = to, from
+	}
+
+	_, entryExists := m[from]
+	if !entryExists || overwrite {
 		m[from] = to
+	} else if entryExists && m[from] != to {
+		VLog("trying to overwrite rewrite map entry %s pointing to %s with %s", from, m[from], to)
 	}
 }
 
 func buildRewriteMapping(pkg *Package, pkgdir string, m map[string]string, undo bool) error {
 	seen := make(map[string]struct{})
-	var process func(pkg *Package) error
-	process = func(pkg *Package) error {
+	var process func(pkg *Package, rootPackage bool) error
+
+	// `rootPackage` indicates if we're processing the dependencies
+	// of the root package (declared in `package.json`) that should
+	// not be overwritten in the map with transitive dependencies
+	// (dependencies of other dependencies).
+	process = func(pkg *Package, rootPackage bool) error {
 		for _, dep := range pkg.Dependencies {
 			if _, ok := seen[dep.Hash]; ok {
 				continue
@@ -1032,17 +1050,19 @@ func buildRewriteMapping(pkg *Package, pkgdir string, m map[string]string, undo 
 				return fmt.Errorf("package %q not found. (dependency of %s)", dep.Name, pkg.Name)
 			}
 
-			addRewriteForDep(dep, cpkg, m, undo)
+			// Allow overwriting the map only if these are the dependencies
+			// of the root package.
+			addRewriteForDep(dep, cpkg, m, undo, rootPackage)
 
 			// recurse!
-			err = process(cpkg)
+			err = process(cpkg, false)
 			if err != nil {
 				return err
 			}
 		}
 		return nil
 	}
-	return process(pkg)
+	return process(pkg, true)
 }
 
 func buildMap(pkg *Package, m map[string]string) error {
