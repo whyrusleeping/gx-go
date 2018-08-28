@@ -592,6 +592,10 @@ var postInstallHookCommand = cli.Command{
 			Name:  "global",
 			Usage: "specifies whether or not the install was global",
 		},
+		cli.StringFlag{
+			Name:  "sync",
+			Usage: "sync dependencies with parent package (intended to be used with the link command)",
+		},
 	},
 	Action: func(c *cli.Context) error {
 		if !c.Args().Present() {
@@ -621,10 +625,55 @@ var postInstallHookCommand = cli.Command{
 			reldir = dir
 		}
 
+		var syncPkg *Package
+		var syncPkgDir string
+		if syncPkgDir = c.String("sync"); syncPkgDir != "" {
+			err := gx.FindPackageInDir(&syncPkg, syncPkgDir)
+			if err != nil {
+				return fmt.Errorf("find sync package in %s failed : %s", syncPkgDir, err)
+			}
+		}
+
 		mapping := make(map[string]string)
 		err = buildRewriteMapping(&pkg, reldir, mapping, false)
 		if err != nil {
-			return fmt.Errorf("building rewrite mapping failed: %s", err)
+			return fmt.Errorf("building rewrite mapping failed for package %s: %s", pkg.Name, err)
+		}
+
+		if syncPkg != nil {
+			// Use the dependency versions of `syncPkg` in case of a mismatch
+			// with the versions in `pkg`.
+
+			syncRewriteMap := make(map[string]string)
+			err = buildRewriteMapping(syncPkg, syncPkgDir, syncRewriteMap, false)
+			if err != nil {
+				return fmt.Errorf("building rewrite mapping failed for package %s: %s", syncPkg.Name, err)
+			}
+
+			// Iterate the `rewriteMap` indexed by the DVCS imports (since `undo`
+			// is false) and replace them with dependencies found in the
+			// `syncRewriteMap` if the gx import paths don't match (that is,
+			// if their versions are different).
+			var replacedImports []string
+			for dvcsImport, gxImportPath := range mapping {
+				syncGxImportPath, exists := syncRewriteMap[dvcsImport]
+
+				if exists && gxImportPath != syncGxImportPath {
+					mapping[dvcsImport] = syncGxImportPath
+					replacedImports = append(replacedImports, dvcsImport)
+				}
+			}
+
+			if len(replacedImports) > 0 {
+				fmt.Printf("Replaced %d entries in the rewrite map:\n", len(replacedImports))
+				for _, dvcsImport := range(replacedImports) {
+					fmt.Printf("  %s\n", dvcsImport)
+				}
+			}
+			// TODO: This should be handled by the `VLog` function.
+			// (At the moment this is called from `gx-go link` which doesn't
+			// have access to the global `Verbose` flag to check whether to
+			// include the `--verbose` argument or not.)
 		}
 
 		hash := filepath.Base(npkg)
@@ -987,22 +1036,33 @@ func globalPath() string {
 	return filepath.Join(gp, "src", "gx", "ipfs")
 }
 
-func loadDep(dep *gx.Dependency, pkgdir string) (*Package, error) {
-	var cpkg Package
-	pdir := filepath.Join(pkgdir, dep.Hash)
-	VLog("  - fetching dep: %s (%s)", dep.Name, dep.Hash)
-	err := gx.FindPackageInDir(&cpkg, pdir)
-	if err != nil {
-		// try global
-		p := filepath.Join(globalPath(), dep.Hash)
-		VLog("  - checking in global namespace (%s)", p)
-		gerr := gx.FindPackageInDir(&cpkg, p)
-		if gerr != nil {
-			return nil, fmt.Errorf("failed to find package: %s", gerr)
+// Load the `Dependency` by its hash returning the `Package` where it's
+// installed, `pkgDir` is an optional parameter with the directory
+// where to look for that dependency.
+// TODO: `pkgDir` isn't actually the package directory, it's where
+// *all* the packages are stored, it should have another name (and
+// it shouldn't be "packages directory").
+func loadDep(dep *gx.Dependency, pkgDir string) (*Package, error) {
+	var pkg Package
+	if pkgDir != "" {
+		pkgPath := filepath.Join(pkgDir, dep.Hash)
+		VLog("  - fetching dep: %s (%s)", dep.Name, dep.Hash)
+		err := gx.FindPackageInDir(&pkg, pkgPath)
+		if err == nil {
+			return &pkg, nil
 		}
 	}
 
-	return &cpkg, nil
+	// Either `pkgDir` wasn't specified or it failed
+	// to find it there, try global path.
+	p := filepath.Join(globalPath(), dep.Hash)
+	VLog("  - checking in global namespace (%s)", p)
+	gerr := gx.FindPackageInDir(&pkg, p)
+	if gerr != nil {
+		return nil, fmt.Errorf("failed to find package: %s", gerr)
+	}
+
+	return &pkg, nil
 }
 
 // Rewrites the package `DvcsImport` with the dependency hash (or
@@ -1030,6 +1090,9 @@ func addRewriteForDep(dep *gx.Dependency, pkg *Package, m map[string]string, und
 }
 
 func buildRewriteMapping(pkg *Package, pkgdir string, m map[string]string, undo bool) error {
+	// TODO: Encapsulate `Package` and `pkgDir` in another structure
+	// (such as `installedPackage`).
+
 	seen := make(map[string]struct{})
 	var process func(pkg *Package, rootPackage bool) error
 
