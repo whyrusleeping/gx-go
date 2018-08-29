@@ -240,15 +240,13 @@ func findDepDVCSimport(dep *gx.Dependency, gxSrcDir string) (string, error) {
 	gxdir := filepath.Join(gxSrcDir, "gx", "ipfs", dep.Hash)
 
 	// Get the dependency to find out its DVCS import.
-	gxget := exec.Command("gx", "get", dep.Hash, "-o", gxdir)
-	gxget.Stdout = os.Stderr
-	gxget.Stderr = os.Stderr
-	if err := gxget.Run(); err != nil {
-		return "", fmt.Errorf("error during gx get: %s", err)
+	err := gxGetPackage(dep.Hash)
+	if err != nil {
+		return "", err
 	}
 
 	var pkg gx.Package
-	err := gx.FindPackageInDir(&pkg, gxdir)
+	err = gx.FindPackageInDir(&pkg, gxdir)
 	if err != nil {
 		return "", fmt.Errorf("error during gx.FindPackageInDir: %s", err)
 	}
@@ -277,8 +275,6 @@ func unlinkDependency(dep *gx.Dependency) (string, error) {
 	// from synced dependencies (`gx-go link --sync`) of another package that
 	// may not be available now (to build the rewrite map) this is the safer
 	// option.
-	// TODO: The fix functionality is not working in the cases the package isn't
-	// already available.
 	uwcmd.Dir = target
 	uwcmd.Stdout = nil
 	uwcmd.Stderr = os.Stderr

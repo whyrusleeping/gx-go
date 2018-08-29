@@ -392,6 +392,23 @@ func goGetPackage(path string) error {
 	return nil
 }
 
+func gxGetPackage(hash string) error {
+	srcdir, err := gx.InstallPath("go", "", true)
+	if err != nil {
+		return err
+	}
+	gxdir := filepath.Join(srcdir, "gx", "ipfs", hash)
+
+	gxget := exec.Command("gx", "get", hash, "-o", gxdir)
+	gxget.Stdout = os.Stderr
+	gxget.Stderr = os.Stderr
+	if err = gxget.Run(); err != nil {
+		return fmt.Errorf("error during gx get: %s", err)
+	}
+
+	return nil
+}
+
 func fixImports(path string) error {
 	fixmap := make(map[string]string)
 	gopath := os.Getenv("GOPATH")
@@ -411,9 +428,19 @@ func fixImports(path string) error {
 			var pkg Package
 			err := gx.FindPackageInDir(&pkg, filepath.Join(gopath, "src", canon))
 			if err != nil {
-				fmt.Println(err)
-				return imp
+				hash := parts[2]
+				err = gxGetPackage(hash)
+				if err != nil {
+					VLog(err)
+					return imp
+				}
+				err := gx.FindPackageInDir(&pkg, filepath.Join(gopath, "src", canon))
+				if err != nil {
+					VLog(err)
+					return imp
+				}
 			}
+
 			if pkg.Gx.DvcsImport != "" {
 				fixmap[imp] = pkg.Gx.DvcsImport
 				return pkg.Gx.DvcsImport + rest
