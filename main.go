@@ -140,7 +140,7 @@ var LockGenCommand = cli.Command{
 		},
 	},
 	Action: func(c *cli.Context) error {
-		ignoreConflict := c.Bool("ignore-duplicate")
+		ignoreConflict := c.Bool("ignore-conflicts")
 
 		pkg, err := LoadPackageFile(gx.PkgFileName)
 		if err != nil {
