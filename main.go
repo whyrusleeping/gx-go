@@ -149,7 +149,8 @@ var LockGenCommand = cli.Command{
 
 		done := make(map[string]bool)
 		lockFile := gx.LockFile{
-			Language: pkg.Language,
+			Language:    pkg.Language,
+			LockVersion: gx.LockVersion,
 		}
 		lockFile.Deps = make(map[string]gx.LockDep)
 
