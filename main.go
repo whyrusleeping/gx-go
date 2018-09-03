@@ -1086,9 +1086,20 @@ func loadDep(dep *gx.Dependency, pkgDir string) (*Package, error) {
 	// to find it there, try global path.
 	p := filepath.Join(globalPath(), dep.Hash)
 	VLog("  - checking in global namespace (%s)", p)
-	gerr := gx.FindPackageInDir(&pkg, p)
-	if gerr != nil {
-		return nil, fmt.Errorf("failed to find package: %s", gerr)
+	err := gx.FindPackageInDir(&pkg, p)
+	if err != nil {
+		// It didn't find the package in the glogal path, try
+		// fetching it.
+		err := gxGetPackage(dep.Hash)
+		// TODO: This works because `gxGetPackage` has the global path hard-coded.
+		if err != nil {
+			return nil, fmt.Errorf("failed to fetch package: %s", err)
+		}
+
+		err = gx.FindPackageInDir(&pkg, p)
+		if err != nil {
+			return nil, fmt.Errorf("failed to find package: %s", err)
+		}
 	}
 
 	return &pkg, nil

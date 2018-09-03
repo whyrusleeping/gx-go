@@ -28,9 +28,7 @@ package if these dependent packages specify alternative, conflicting
 dependency versions. We can work around this using the --override-deps flag 
 to rewrite the target package using dependencies from the current package
 (the package you're trying to build) first, falling back on the target
-package's package.json file. (Note: Make sure all the dependencies of the
-current package are available to build its rewrite map if using the 
---override-deps flag, e.g., by calling 'gx install --global'.)
+package's package.json file.
 
 Example workflow:
 
