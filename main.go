@@ -298,26 +298,29 @@ var RewriteCommand = cli.Command{
 
 		VLog("  - building rewrite mapping")
 		mapping := make(map[string]string)
-		if !c.Args().Present() {
-			err = buildRewriteMapping(pkg, pkgdir, mapping, c.Bool("undo"))
-			if err != nil {
-				return fmt.Errorf("build of rewrite mapping failed:\n%s", err)
-			}
-		} else {
+
+		err = buildRewriteMapping(pkg, pkgdir, mapping, c.Bool("undo"))
+		if err != nil {
+			return fmt.Errorf("build of rewrite mapping failed:\n%s", err)
+		}
+		if c.Args().Present() {
+			keepSet := map[string]struct{}{}
 			for _, arg := range c.Args() {
-				dep := pkg.FindDep(arg)
-				if dep == nil {
-					return fmt.Errorf("%s not found", arg)
+				keepSet[arg] = struct{}{}
+			}
+			undo := c.Bool("undo")
+			for a, b := range mapping {
+				gxPath := b
+				if undo {
+					gxPath = a
 				}
-
-				pkg, err := loadDep(dep, pkgdir)
-				if err != nil {
-					return err
+				_, name := path.Split(gxPath)
+				if _, ok := keepSet[name]; !ok {
+					delete(mapping, a)
 				}
-
-				addRewriteForDep(dep, pkg, mapping, c.Bool("undo"), true)
 			}
 		}
+
 		VLog("  - rewrite mapping complete")
 
 		if c.Bool("dry-run") {
