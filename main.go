@@ -256,7 +256,7 @@ var rewriteUndoAlias = cli.Command{
 var RewriteCommand = cli.Command{
 	Name:      "rewrite",
 	Usage:     "temporary hack to evade causality",
-	ArgsUsage: "[optional package name]",
+	ArgsUsage: "[optional package name(s)]",
 	Aliases:   []string{"rw"},
 	Flags: []cli.Flag{
 		cli.BoolFlag{
