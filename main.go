@@ -283,6 +283,12 @@ var RewriteCommand = cli.Command{
 		}
 
 		if c.Bool("fix") {
+			if c.Args().Present() {
+				return fmt.Errorf("rewrite: --fix option does not take arguments")
+			}
+			if c.Bool("dry-run") {
+				return fmt.Errorf("rewrite: --fix option does not support --dry-run option")
+			}
 			return fixImports(root)
 		}
 
