@@ -149,12 +149,13 @@ var LockGenCommand = cli.Command{
 
 		done := make(map[string]bool)
 		lockFile := gx.LockFile{
-			Language:    pkg.Language,
 			LockVersion: gx.LockVersion,
 		}
-		lockFile.Deps = make(map[string]gx.LockDep)
+		lockFile.Language = pkg.Language
+		lockFile.Deps = make(map[string]map[string]gx.Lock)
+		lockFile.Deps[pkg.Language] = make(map[string]gx.Lock)
 
-		if err := genLockDeps(pkg, lockFile.Deps, done, ignoreConflict); err != nil {
+		if err := genLockDeps(pkg, lockFile.Deps[pkg.Language], done, ignoreConflict); err != nil {
 			return err
 		}
 
@@ -822,7 +823,7 @@ var DevCopyCommand = cli.Command{
 	},
 }
 
-func genLockDeps(pkg *Package, deps map[string]gx.LockDep, done map[string]bool, ignoreConflict bool) error {
+func genLockDeps(pkg *Package, deps map[string]gx.Lock, done map[string]bool, ignoreConflict bool) error {
 	for _, dep := range pkg.Dependencies {
 		if done[dep.Hash] {
 			continue
@@ -846,7 +847,7 @@ func genLockDeps(pkg *Package, deps map[string]gx.LockDep, done map[string]bool,
 				return fmt.Errorf("Found a duplicate import %s for package %s", cpkg.Gx.DvcsImport, pkg.Name)
 			}
 		} else {
-			deps[cpkg.Gx.DvcsImport] = gx.LockDep{
+			deps[cpkg.Gx.DvcsImport] = gx.Lock{
 				Ref: ref,
 			}
 		}
