@@ -93,6 +93,7 @@ func main() {
 		UpdateCommand,
 		DvcsDepsCommand,
 		LinkCommand,
+		LockGenCommand,
 
 		DevCopyCommand,
 		// Go tool compat:
@@ -126,6 +127,45 @@ var DepMapCommand = cli.Command{
 
 		os.Stdout.Write(out)
 		return nil
+	},
+}
+
+var LockGenCommand = cli.Command{
+	Name:  "lock-gen",
+	Usage: "Generate a lock file",
+	Flags: []cli.Flag{
+		cli.BoolFlag{
+			Name:  "ignore-conflicts",
+			Usage: "Does not error on conflicting import in sub-packages",
+		},
+	},
+	Action: func(c *cli.Context) error {
+		ignoreConflict := c.Bool("ignore-conflicts")
+
+		pkg, err := LoadPackageFile(gx.PkgFileName)
+		if err != nil {
+			return err
+		}
+
+		done := make(map[string]bool)
+		lockFile := gx.LockFile{
+			LockVersion: gx.LockVersion,
+		}
+		lockFile.Language = pkg.Language
+		lockFile.Deps = make(map[string]map[string]gx.Lock)
+		lockFile.Deps[pkg.Language] = make(map[string]gx.Lock)
+
+		if err := genLockDeps(pkg, lockFile.Deps[pkg.Language], done, ignoreConflict); err != nil {
+			return err
+		}
+
+		m, err := json.MarshalIndent(lockFile, "", "  ")
+		if err != nil {
+			return err
+		}
+
+		_, err = os.Stdout.Write(m)
+		return err
 	},
 }
 
@@ -781,6 +821,43 @@ var DevCopyCommand = cli.Command{
 
 		return devCopySymlinking(filepath.Join(cwd, "vendor"), pkg, make(map[string]bool))
 	},
+}
+
+func genLockDeps(pkg *Package, deps map[string]gx.Lock, done map[string]bool, ignoreConflict bool) error {
+	for _, dep := range pkg.Dependencies {
+		if done[dep.Hash] {
+			continue
+		}
+
+		done[dep.Hash] = true
+
+		var cpkg Package
+		err := gx.LoadPackage(&cpkg, pkg.Language, dep.Hash)
+		if err != nil {
+			if os.IsNotExist(err) {
+				VLog("LoadPackage error: ", err)
+				return fmt.Errorf("package %s (%s) not found", dep.Name, dep.Hash)
+			}
+			return err
+		}
+
+		ref := fmt.Sprintf("/ipfs/%s/%s", dep.Hash, dep.Name)
+		if d, found := deps[cpkg.Gx.DvcsImport]; found {
+			if !ignoreConflict && ref != d.Ref {
+				return fmt.Errorf("Found a duplicate import %s for package %s", cpkg.Gx.DvcsImport, pkg.Name)
+			}
+		} else {
+			deps[cpkg.Gx.DvcsImport] = gx.Lock{
+				Ref: ref,
+			}
+		}
+
+		if err := genLockDeps(&cpkg, deps, done, ignoreConflict); err != nil {
+			return err
+		}
+	}
+
+	return nil
 }
 
 func devCopySymlinking(root string, pkg *Package, done map[string]bool) error {
