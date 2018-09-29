@@ -432,6 +432,23 @@ func goGetPackage(path string) error {
 	return nil
 }
 
+func gxGetPackage(hash string) error {
+	srcdir, err := gx.InstallPath("go", "", true)
+	if err != nil {
+		return err
+	}
+	gxdir := filepath.Join(srcdir, "gx", "ipfs", hash)
+
+	gxget := exec.Command("gx", "get", hash, "-o", gxdir)
+	gxget.Stdout = os.Stderr
+	gxget.Stderr = os.Stderr
+	if err = gxget.Run(); err != nil {
+		return fmt.Errorf("error during gx get: %s", err)
+	}
+
+	return nil
+}
+
 func fixImports(path string) error {
 	fixmap := make(map[string]string)
 	gopath := os.Getenv("GOPATH")
@@ -451,9 +468,19 @@ func fixImports(path string) error {
 			var pkg Package
 			err := gx.FindPackageInDir(&pkg, filepath.Join(gopath, "src", canon))
 			if err != nil {
-				fmt.Println(err)
-				return imp
+				hash := parts[2]
+				err = gxGetPackage(hash)
+				if err != nil {
+					VLog(err)
+					return imp
+				}
+				err := gx.FindPackageInDir(&pkg, filepath.Join(gopath, "src", canon))
+				if err != nil {
+					VLog(err)
+					return imp
+				}
 			}
+
 			if pkg.Gx.DvcsImport != "" {
 				fixmap[imp] = pkg.Gx.DvcsImport
 				return pkg.Gx.DvcsImport + rest
@@ -632,6 +659,10 @@ var postInstallHookCommand = cli.Command{
 			Name:  "global",
 			Usage: "specifies whether or not the install was global",
 		},
+		cli.StringFlag{
+			Name:  "override-deps",
+			Usage: "path of a package used to override dependency versions (intended to be used with the link command)",
+		},
 	},
 	Action: func(c *cli.Context) error {
 		if !c.Args().Present() {
@@ -661,10 +692,57 @@ var postInstallHookCommand = cli.Command{
 			reldir = dir
 		}
 
+		var depsPkg *Package
+		var depsPkgDir string
+		if depsPkgDir = c.String("override-deps"); depsPkgDir != "" {
+			err := gx.FindPackageInDir(&depsPkg, depsPkgDir)
+			if err != nil {
+				return fmt.Errorf("find deps package in %s failed : %s", depsPkgDir, err)
+			}
+		}
+
 		mapping := make(map[string]string)
 		err = buildRewriteMapping(&pkg, reldir, mapping, false)
 		if err != nil {
-			return fmt.Errorf("building rewrite mapping failed: %s", err)
+			return fmt.Errorf("building rewrite mapping failed for package %s: %s", pkg.Name, err)
+		}
+
+		if depsPkg != nil {
+			// Use the dependency versions of `depsPkg` in case of a mismatch
+			// with the versions in `pkg`.
+
+			depsRewriteMap := make(map[string]string)
+			err = buildRewriteMapping(depsPkg, depsPkgDir, depsRewriteMap, false)
+			if err != nil {
+				return fmt.Errorf("building rewrite mapping failed for package %s: %s", depsPkg.Name, err)
+				// TODO: All the dependencies of the deps package need to be fetched. Should we call
+				// `gx install --global`?
+			}
+
+			// Iterate the `rewriteMap` indexed by the DVCS imports (since `undo`
+			// is false) and replace them with dependencies found in the
+			// `depsRewriteMap` if the gx import paths don't match (that is,
+			// if their versions are different).
+			var replacedImports []string
+			for dvcsImport, gxImportPath := range mapping {
+				depsGxImportPath, exists := depsRewriteMap[dvcsImport]
+
+				if exists && gxImportPath != depsGxImportPath {
+					mapping[dvcsImport] = depsGxImportPath
+					replacedImports = append(replacedImports, dvcsImport)
+				}
+			}
+
+			if len(replacedImports) > 0 {
+				fmt.Printf("Replaced %d entries in the rewrite map:\n", len(replacedImports))
+				for _, dvcsImport := range(replacedImports) {
+					fmt.Printf("  %s\n", dvcsImport)
+				}
+			}
+			// TODO: This should be handled by the `VLog` function.
+			// (At the moment this is called from `gx-go link` which doesn't
+			// have access to the global `Verbose` flag to check whether to
+			// include the `--verbose` argument or not.)
 		}
 
 		hash := filepath.Base(npkg)
@@ -1064,22 +1142,44 @@ func globalPath() string {
 	return filepath.Join(gp, "src", "gx", "ipfs")
 }
 
-func loadDep(dep *gx.Dependency, pkgdir string) (*Package, error) {
-	var cpkg Package
-	pdir := filepath.Join(pkgdir, dep.Hash)
-	VLog("  - fetching dep: %s (%s)", dep.Name, dep.Hash)
-	err := gx.FindPackageInDir(&cpkg, pdir)
-	if err != nil {
-		// try global
-		p := filepath.Join(globalPath(), dep.Hash)
-		VLog("  - checking in global namespace (%s)", p)
-		gerr := gx.FindPackageInDir(&cpkg, p)
-		if gerr != nil {
-			return nil, fmt.Errorf("failed to find package: %s", gerr)
+// Load the `Dependency` by its hash returning the `Package` where it's
+// installed, `pkgDir` is an optional parameter with the directory
+// where to look for that dependency.
+// TODO: `pkgDir` isn't actually the package directory, it's where
+// *all* the packages are stored, it should have another name (and
+// it shouldn't be "packages directory").
+func loadDep(dep *gx.Dependency, pkgDir string) (*Package, error) {
+	var pkg Package
+	if pkgDir != "" {
+		pkgPath := filepath.Join(pkgDir, dep.Hash)
+		VLog("  - fetching dep: %s (%s)", dep.Name, dep.Hash)
+		err := gx.FindPackageInDir(&pkg, pkgPath)
+		if err == nil {
+			return &pkg, nil
 		}
 	}
 
-	return &cpkg, nil
+	// Either `pkgDir` wasn't specified or it failed
+	// to find it there, try global path.
+	p := filepath.Join(globalPath(), dep.Hash)
+	VLog("  - checking in global namespace (%s)", p)
+	err := gx.FindPackageInDir(&pkg, p)
+	if err != nil {
+		// It didn't find the package in the glogal path, try
+		// fetching it.
+		err := gxGetPackage(dep.Hash)
+		// TODO: This works because `gxGetPackage` has the global path hard-coded.
+		if err != nil {
+			return nil, fmt.Errorf("failed to fetch package: %s", err)
+		}
+
+		err = gx.FindPackageInDir(&pkg, p)
+		if err != nil {
+			return nil, fmt.Errorf("failed to find package: %s", err)
+		}
+	}
+
+	return &pkg, nil
 }
 
 // Rewrites the package `DvcsImport` with the dependency hash (or
@@ -1107,6 +1207,9 @@ func addRewriteForDep(dep *gx.Dependency, pkg *Package, m map[string]string, und
 }
 
 func buildRewriteMapping(pkg *Package, pkgdir string, m map[string]string, undo bool) error {
+	// TODO: Encapsulate `Package` and `pkgDir` in another structure
+	// (such as `installedPackage`).
+
 	seen := make(map[string]struct{})
 	var process func(pkg *Package, rootPackage bool) error
 
