@@ -61,7 +61,7 @@ func main() {
 	app.Name = "gx-go"
 	app.Author = "whyrusleeping"
 	app.Usage = "gx extensions for golang"
-	app.Version = "1.8.0"
+	app.Version = "1.9.0"
 	app.Flags = []cli.Flag{
 		cli.BoolFlag{
 			Name:  "verbose",
@@ -735,7 +735,7 @@ var postInstallHookCommand = cli.Command{
 
 			if len(replacedImports) > 0 {
 				fmt.Printf("Replaced %d entries in the rewrite map:\n", len(replacedImports))
-				for _, dvcsImport := range(replacedImports) {
+				for _, dvcsImport := range replacedImports {
 					fmt.Printf("  %s\n", dvcsImport)
 				}
 			}
