@@ -8,7 +8,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	cli "github.com/codegangsta/cli"
+	cli "github.com/urfave/cli"
 	gx "github.com/whyrusleeping/gx/gxutil"
 )
 

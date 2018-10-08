@@ -15,8 +15,8 @@ import (
 	"strings"
 	"text/tabwriter"
 
-	cli "github.com/codegangsta/cli"
 	homedir "github.com/mitchellh/go-homedir"
+	cli "github.com/urfave/cli"
 	rw "github.com/whyrusleeping/gx-go/rewrite"
 	gx "github.com/whyrusleeping/gx/gxutil"
 	. "github.com/whyrusleeping/stump"
