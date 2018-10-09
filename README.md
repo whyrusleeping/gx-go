@@ -11,9 +11,9 @@ USAGE:
    gx-go [global options] command [command options] [arguments...]
 
 VERSION:
-   1.3.0
+   1.8.0
 
-AUTHOR(S):
+AUTHOR:
    whyrusleeping
 
 COMMANDS:
@@ -25,7 +25,10 @@ COMMANDS:
      uw
      update       update a packages imports to a new path
      dvcs-deps    display all dvcs deps
+     link         Symlink packages to their dvcsimport repos, for local development.
+     devcopy      Create a development copy of the given package
      get          gx-ified `go get`
+     help, h      Shows a list of commands or help for one command
 
 GLOBAL OPTIONS:
    --verbose      turn on verbose output
