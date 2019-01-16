@@ -110,10 +110,6 @@ func rewriteImportsInFile(fi string, rw func(string) string, rwLock *sync.Mutex)
 	}
 	rwLock.Unlock()
 
-	if !changed {
-		return nil
-	}
-
 	buf := bufpool.Get().(*bytes.Buffer)
 	defer func() {
 		bufpool.Put(buf)
@@ -124,6 +120,15 @@ func rewriteImportsInFile(fi string, rw func(string) string, rwLock *sync.Mutex)
 	buf.Reset()
 	if err = cfg.Fprint(buf, fset, file); err != nil {
 		return err
+	}
+
+	pathCh, err := fixCanonicalImports(buf.Bytes())
+	if err != nil {
+		return err
+	}
+
+	if !(changed || pathCh) {
+		return nil
 	}
 
 	// 2. Read the imports back in to sort them.
