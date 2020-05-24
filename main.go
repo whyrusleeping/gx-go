@@ -970,8 +970,12 @@ func devCopySymlinking(root string, pkg *Package, done map[string]bool) error {
 			return err
 		}
 
-		if err := os.Symlink(frompath, topath); err != nil {
-			return err
+		if _, err := os.Stat(topath); err != nil && os.IsNotExist(err) {
+			if err := os.Symlink(frompath, topath); err != nil {
+				return err
+			}
+		} else {
+			VLog("Package already exists in vendor tree: ", topath)
 		}
 
 		if err := devCopySymlinking(root, &cpkg, done); err != nil {
