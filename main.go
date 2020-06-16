@@ -109,13 +109,14 @@ var DepMapCommand = cli.Command{
 	Name:  "dep-map",
 	Usage: "prints out a json dep map for usage by 'import --map'",
 	Action: func(c *cli.Context) error {
-		pkg, err := LoadPackageFile(gx.PkgFileName)
+		var pkg gx.Package
+		err := gx.LoadPackageFile(&pkg, gx.PkgFileName)
 		if err != nil {
 			return err
 		}
 
 		m := make(map[string]string)
-		err = buildMap(pkg, m)
+		err = buildMap(&pkg, m)
 		if err != nil {
 			return err
 		}
@@ -1245,32 +1246,24 @@ func buildRewriteMapping(pkg *Package, pkgdir string, m map[string]string, undo 
 	return process(pkg, true)
 }
 
-func buildMap(pkg *Package, m map[string]string) error {
-	for _, dep := range pkg.Dependencies {
-		var ch Package
-		err := gx.FindPackageInDir(&ch, filepath.Join(vendorDir, dep.Hash))
-		if err != nil {
-			return err
-		}
-
-		if ch.Gx.DvcsImport != "" {
-			e, ok := m[ch.Gx.DvcsImport]
+func buildMap(pkg *gx.Package, m map[string]string) error {
+	pkg.ForEachDep(func(dep *gx.Dependency, ch *gx.Package) error {
+		dvcsImport := GxDvcsImport(ch)
+		if dvcsImport != "" {
+			e, ok := m[dvcsImport]
 			if ok {
 				if e != dep.Hash {
-					Log("have two dep packages with same import path: ", ch.Gx.DvcsImport)
+					Log("have two dep packages with same import path: ", dvcsImport)
 					Log("  - ", e)
 					Log("  - ", dep.Hash)
 				}
-				continue
+				return nil
 			}
-			m[ch.Gx.DvcsImport] = dep.Hash
+			m[dvcsImport] = dep.Hash
 		}
 
-		err = buildMap(&ch, m)
-		if err != nil {
-			return err
-		}
-	}
+		return buildMap(ch, m)
+	})
 	return nil
 }
 
