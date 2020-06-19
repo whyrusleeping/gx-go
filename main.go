@@ -296,7 +296,7 @@ var rewriteUndoAlias = cli.Command{
 var RewriteCommand = cli.Command{
 	Name:      "rewrite",
 	Usage:     "temporary hack to evade causality",
-	ArgsUsage: "[optional package name]",
+	ArgsUsage: "[optional package name(s)]",
 	Aliases:   []string{"rw"},
 	Flags: []cli.Flag{
 		cli.BoolFlag{
@@ -323,6 +323,12 @@ var RewriteCommand = cli.Command{
 		}
 
 		if c.Bool("fix") {
+			if c.Args().Present() {
+				return fmt.Errorf("rewrite: --fix option does not take arguments")
+			}
+			if c.Bool("dry-run") {
+				return fmt.Errorf("rewrite: --fix option does not support --dry-run option")
+			}
 			return fixImports(root)
 		}
 
@@ -338,26 +344,29 @@ var RewriteCommand = cli.Command{
 
 		VLog("  - building rewrite mapping")
 		mapping := make(map[string]string)
-		if !c.Args().Present() {
-			err = buildRewriteMapping(pkg, pkgdir, mapping, c.Bool("undo"))
-			if err != nil {
-				return fmt.Errorf("build of rewrite mapping failed:\n%s", err)
-			}
-		} else {
+
+		undo := c.Bool("undo")
+		err = buildRewriteMapping(pkg, pkgdir, mapping, undo)
+		if err != nil {
+			return fmt.Errorf("build of rewrite mapping failed:\n%s", err)
+		}
+		if c.Args().Present() {
+			keepSet := map[string]struct{}{}
 			for _, arg := range c.Args() {
-				dep := pkg.FindDep(arg)
-				if dep == nil {
-					return fmt.Errorf("%s not found", arg)
+				keepSet[arg] = struct{}{}
+			}
+			for from, to := range mapping {
+				gxPath := to
+				if undo {
+					gxPath = from
 				}
-
-				pkg, err := loadDep(dep, pkgdir)
-				if err != nil {
-					return err
+				_, name := path.Split(gxPath)
+				if _, ok := keepSet[name]; !ok {
+					delete(mapping, from)
 				}
-
-				addRewriteForDep(dep, pkg, mapping, c.Bool("undo"), true)
 			}
 		}
+
 		VLog("  - rewrite mapping complete")
 
 		if c.Bool("dry-run") {
